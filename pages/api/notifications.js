@@ -7,13 +7,15 @@ export default function handler(req, res) {
   if (req.method === 'GET') {
     const { userId } = req.query;
     if (userId) {
-      const userNotifications = notifications.filter(n => n.userId === parseInt(userId));
+
+      const userNotifications = notifications.filter(n => n.userId == userId); // Use == for string/number comparison
       res.status(200).json(userNotifications);
     } else {
       res.status(200).json(notifications);
     }
   } else if (req.method === 'POST') {
     const { userIds, message, type } = req.body;
+    console.log('📢 Creating notifications for userIds:', userIds);
     const newNotifications = userIds.map(userId => ({
       id: Date.now() + Math.random(),
       userId,
@@ -23,6 +25,7 @@ export default function handler(req, res) {
       timestamp: new Date().toISOString()
     }));
     globalNotifications.push(...newNotifications);
+    console.log('📢 Total notifications now:', globalNotifications.length);
     res.status(201).json(newNotifications);
   } else if (req.method === 'PUT') {
     const { notificationId } = req.body;

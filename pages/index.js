@@ -39,6 +39,7 @@ export default function Home() {
       if (response.ok) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('userRole', data.role);
+        localStorage.setItem('userEmail', data.email);
         showMessage('Login successful!', 'success');
         router.push(`/${data.role}`);
       } else {

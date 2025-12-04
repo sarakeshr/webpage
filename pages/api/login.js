@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     }
     
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, message: 'Login successful', role: user.role, permissions: user.permissions });
+    res.json({ token, message: 'Login successful', role: user.role, permissions: user.permissions, email: user.email });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

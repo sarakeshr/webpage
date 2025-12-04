@@ -31,7 +31,7 @@ export default function ProjectManagerProjects() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Project Manager Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href="/project_manager/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <NotificationBell userRole="project_manager" />
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
@@ -48,7 +48,7 @@ export default function ProjectManagerProjects() {
                   <button 
                     onClick={() => {
                       localStorage.setItem('selectedProjectId', project.id);
-                      router.push('/project_manager/meeting');
+                      router.push('/projectmanagerdashboard/projects/meeting');
                     }}
                     style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                   >

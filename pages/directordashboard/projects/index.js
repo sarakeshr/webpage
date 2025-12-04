@@ -31,7 +31,7 @@ export default function DirectorProjects() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Director Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <Link href="/directordashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href="/director/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/directordashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <NotificationBell userRole="director" />
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
@@ -48,7 +48,7 @@ export default function DirectorProjects() {
                   <button 
                     onClick={() => {
                       localStorage.setItem('selectedProjectId', project.id);
-                      router.push('/director/meeting');
+                      router.push('/directordashboard/projects/meeting');
                     }}
                     style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                   >

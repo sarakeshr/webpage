@@ -13,21 +13,33 @@ export default function NotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      // Get current user info from token or localStorage
       const token = localStorage.getItem('token');
-      if (!token) return;
+      const userEmail = localStorage.getItem('userEmail');
+      if (!token || !userEmail) return;
       
-      // For now, we'll use a simple approach - get all notifications
-      // In a real app, you'd decode the JWT token to get the actual user ID
+      // Get all notifications first
       const response = await fetch('/api/notifications');
+      if (!response.ok) return;
+      
       const allNotifications = await response.json();
       
-      // Filter notifications for current user (using participant IDs from meetings)
-      // This is a simplified approach - in production you'd have proper user mapping
-      setNotifications(allNotifications);
-      setUnreadCount(allNotifications.filter(n => !n.read).length);
+      // Get team data to find current user ID
+      const teamResponse = await fetch('/api/team');
+      if (!teamResponse.ok) return;
+      
+      const teamData = await teamResponse.json();
+      const currentUser = teamData.find(user => user.email === userEmail);
+      
+      if (!currentUser) return;
+      
+      // Filter notifications for current user
+      const userNotifications = allNotifications.filter(n => n.userId == currentUser.id);
+      
+      setNotifications(userNotifications);
+      setUnreadCount(userNotifications.filter(n => !n.read).length);
     } catch (error) {
       console.error('Error fetching notifications:', error);
+      // Fail silently to avoid breaking the UI
     }
   };
 

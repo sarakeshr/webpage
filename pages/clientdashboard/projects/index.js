@@ -31,7 +31,7 @@ export default function ClientProjects() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Client Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <Link href="/clientdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href="/client/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/clientdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <NotificationBell userRole="client" />
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
