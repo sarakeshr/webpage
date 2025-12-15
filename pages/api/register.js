@@ -31,6 +31,11 @@ export default async function handler(req, res) {
     await user.save();
     res.json({ message: 'User registered successfully' });
   } catch (error) {
-    res.status(400).json({ error: 'Username already exists' });
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      res.status(400).json({ error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists` });
+    } else {
+      res.status(400).json({ error: 'Registration failed' });
+    }
   }
 }

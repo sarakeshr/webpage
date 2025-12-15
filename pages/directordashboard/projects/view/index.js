@@ -8,15 +8,35 @@ export default function DirectorViewProject() {
   const [team, setTeam] = useState([]);
   const router = useRouter();
 
-  const fetchMeetings = () => {
+  const fetchMeetings = async () => {
     const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/meetings?projectId=${projectId}`)
-        .then(res => res.json())
-        .then(data => {
-          console.log('Fetched meetings:', data);
-          setMeetings(data);
-        });
+    const userEmail = localStorage.getItem('userEmail');
+    
+    if (projectId && userEmail) {
+      try {
+        // Get all meetings for the project
+        const meetingsRes = await fetch(`/api/meetings?projectId=${projectId}`);
+        const allMeetings = await meetingsRes.json();
+        
+        // Get current user info
+        const teamRes = await fetch('/api/team');
+        const teamData = await teamRes.json();
+        const currentUser = teamData.find(user => user.email === userEmail);
+        
+        if (currentUser) {
+          // Filter meetings where current user is a participant
+          const userMeetings = allMeetings.filter(meeting => 
+            meeting.participants && meeting.participants.includes(currentUser.id)
+          );
+          console.log('User meetings:', userMeetings);
+          setMeetings(userMeetings);
+        } else {
+          setMeetings([]);
+        }
+      } catch (error) {
+        console.error('Error fetching meetings:', error);
+        setMeetings([]);
+      }
     }
   };
 
@@ -66,7 +86,7 @@ export default function DirectorViewProject() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Director Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px' }}>
           <Link href="/directordashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
-          <Link href="/director/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/directordashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
       </nav>
@@ -116,7 +136,7 @@ export default function DirectorViewProject() {
           {meetings.length > 0 ? (
             <div>
               {meetings.map(meeting => (
-                <div key={meeting.id} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '8px', paddingBottom: '8px', marginBottom: '10px', background: '#f8f9fa' }}>
+                <div key={meeting._id || meeting.id} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '8px', paddingBottom: '8px', marginBottom: '10px', background: '#f8f9fa' }}>
                   <div style={{ fontWeight: 'bold', color: '#333' }}>{meeting.title}</div>
                   <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
                     <strong>Date:</strong> {meeting.date} | <strong>Time:</strong> {meeting.time}
@@ -126,9 +146,10 @@ export default function DirectorViewProject() {
                   </div>
                   <button 
                     onClick={() => {
-                      // Generate consistent meeting link
-                      const roomName = `priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meeting.date}-${meeting.time.replace(':', '')}`;
-                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/${roomName}`;
+                      // Generate consistent meeting link based on meeting details
+                      const meetingId = meeting._id || meeting.id || 'default';
+                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meetingId}`;
+                      console.log('Opening meeting room:', meetingRoom);
                       window.open(meetingRoom, '_blank');
                     }}
                     style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}

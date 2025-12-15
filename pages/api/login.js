@@ -13,6 +13,21 @@ export default async function handler(req, res) {
 
   try {
     const { username, email, password } = req.body;
+    
+    // Hardcoded admin credentials
+    if ((username === 'admin' || email === 'admin@priam.com') && password === 'admin123') {
+      const token = jwt.sign({ userId: 'admin', role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+      const adminUser = { username: 'admin', email: 'admin@priam.com', role: 'admin' };
+      return res.json({ 
+        token, 
+        message: 'Login successful', 
+        role: 'admin', 
+        permissions: ['manage_all'], 
+        email: 'admin@priam.com',
+        user: adminUser
+      });
+    }
+    
     const user = await User.findOne({ 
       $or: [{ username }, { email }]
     });
@@ -22,7 +37,22 @@ export default async function handler(req, res) {
     }
     
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, message: 'Login successful', role: user.role, permissions: user.permissions, email: user.email });
+    const userData = {
+      id: user._id,
+      _id: user._id,
+      username: user.username,
+      name: user.name || user.username,
+      email: user.email,
+      role: user.role
+    };
+    res.json({ 
+      token, 
+      message: 'Login successful', 
+      role: user.role, 
+      permissions: user.permissions, 
+      email: user.email,
+      user: userData
+    });
   } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }

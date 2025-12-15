@@ -2,6 +2,7 @@ import dbConnect from '../../lib/db';
 import { scheduleMeeting } from '../../lib/meetingScheduler';
 import { sendMeetingNotification, getRoleEmails } from '../../lib/emailService';
 import { createNotification } from '../../lib/notificationService';
+import { generateProjectRoomName } from '../../lib/jitsiAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -17,6 +18,9 @@ export default async function handler(req, res) {
 
     const { projectId, projectName, date, time, participants, meetingLink, scheduledBy } = req.body;
 
+    // Generate project-based Jitsi room name
+    const roomName = generateProjectRoomName(projectId, projectName);
+
     const meetingData = {
       projectId,
       projectName,
@@ -24,7 +28,9 @@ export default async function handler(req, res) {
       time,
       participants,
       meetingLink,
-      scheduledBy
+      scheduledBy,
+      hostId: scheduledBy,
+      roomName
     };
 
     console.log('📅 Creating meeting with data:', meetingData);

@@ -1,0 +1,1312 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+import Head from 'next/head';
+
+export default function Calendar() {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [meetings, setMeetings] = useState([]);
+  const [draggedMeeting, setDraggedMeeting] = useState(null);
+  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+  const [newMeeting, setNewMeeting] = useState(null);
+  const [hoveredMeeting, setHoveredMeeting] = useState(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [overlapWarning, setOverlapWarning] = useState(null);
+  const [resizingMeeting, setResizingMeeting] = useState(null);
+  const [resizeStartY, setResizeStartY] = useState(0);
+  const [team, setTeam] = useState([]);
+  const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [showProfile, setShowProfile] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetchMeetings();
+    fetchTeam();
+    // Get current user from localStorage
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    console.log('👤 Current user loaded:', user);
+    setCurrentUser(user);
+    
+    // Close profile dropdown when clicking outside
+    const handleClickOutside = (event) => {
+      if (showProfile && !event.target.closest('.profile-dropdown')) {
+        setShowProfile(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showProfile]);
+
+  const fetchTeam = async () => {
+    try {
+      const response = await fetch('/api/team');
+      const data = await response.json();
+      console.log('👥 Team loaded:', data.length);
+      setTeam(data || []);
+    } catch (error) {
+      console.error('❌ Error fetching team:', error);
+      setTeam([]);
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (resizingMeeting) {
+        const deltaY = e.clientY - resizeStartY;
+        const durationChange = Math.round(deltaY / 2);
+        const newDuration = Math.max(15, resizingMeeting.duration + durationChange);
+        
+        setMeetings(prev => prev.map(m => 
+          m._id === resizingMeeting._id 
+            ? { ...m, duration: newDuration }
+            : m
+        ));
+      }
+    };
+    
+    const handleMouseUp = () => {
+      if (resizingMeeting) {
+        setResizingMeeting(null);
+        setResizeStartY(0);
+      }
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingMeeting, resizeStartY]);
+
+
+
+  const fetchMeetings = async () => {
+    try {
+      const response = await fetch('/api/meetings');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log('📅 API Response:', response.status);
+      console.log('📅 Raw data:', data);
+      console.log('📅 Data type:', typeof data);
+      console.log('📅 Is array:', Array.isArray(data));
+      console.log('📅 Meetings count:', data?.length || 0);
+      if (data.length > 0) {
+        console.log('📅 First meeting date:', data[0].date);
+        console.log('📅 First meeting time:', data[0].time);
+        console.log('📅 First meeting title:', data[0].title);
+      }
+      
+      if (Array.isArray(data)) {
+        setMeetings(data);
+        console.log('✅ Meetings set successfully:', data.length);
+      } else {
+        console.warn('⚠️ Data is not an array:', data);
+        setMeetings([]);
+      }
+    } catch (error) {
+      console.error('❌ Fetch error:', error);
+      setMeetings([]);
+    }
+  };
+
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(new Date(year, month, day));
+    }
+    
+    return days;
+  };
+
+  const getMeetingsForDate = (date) => {
+    if (!date) return [];
+    // Fix timezone issue by using local date
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    console.log('📅 Looking for date:', dateStr);
+    console.log('📅 Available meeting dates:', meetings.map(m => m.date));
+    
+    const matchingMeetings = meetings.filter(meeting => meeting.date === dateStr);
+    console.log('📅 Matching meetings for', dateStr, ':', matchingMeetings.length);
+    
+    return matchingMeetings.sort((a, b) => a.time.localeCompare(b.time));
+  };
+
+  const handleCellClick = (date, event) => {
+    if (!date) return;
+    
+    // Calculate time based on click position
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickY = event.clientY - rect.top;
+    const cellHeight = rect.height;
+    const hourFraction = (clickY / cellHeight) * 24; // 24 hours in a day
+    const hour = Math.floor(hourFraction);
+    const minute = Math.floor((hourFraction - hour) * 60);
+    const clickTime = `${hour.toString().padStart(2, '0')}:${Math.floor(minute / 15) * 15}`.padStart(5, '0');
+    
+    // Fix timezone issue by using local date
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const meetingDate = `${year}-${month}-${day}`;
+    
+    setNewMeeting({
+      date: meetingDate,
+      time: clickTime || '09:00',
+      duration: 60,
+      title: 'New Meeting',
+      participants: '',
+      description: '',
+      reminder: 15,
+      repeat: 'none'
+    });
+    setSelectedParticipants([]);
+    setIsCreatingMeeting(true);
+  };
+
+  const handleDragStart = (e, meeting) => {
+    setDraggedMeeting(meeting);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e, date) => {
+    e.preventDefault();
+    if (!draggedMeeting || !date) return;
+
+    // Fix timezone issue by using local date
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const newDate = `${year}-${month}-${day}`;
+
+    try {
+      // Update meeting in database
+      const response = await fetch(`/api/meetings/${draggedMeeting._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: newDate })
+      });
+
+      if (response.ok) {
+        console.log('✅ Meeting date updated in database');
+        fetchMeetings(); // Refresh from database
+      } else {
+        // Update locally as fallback
+        const updatedMeetings = meetings.map(meeting => 
+          meeting._id === draggedMeeting._id 
+            ? { ...meeting, date: newDate }
+            : meeting
+        );
+        setMeetings(updatedMeetings);
+      }
+    } catch (error) {
+      console.error('Error updating meeting:', error);
+      // Update locally as fallback
+      const updatedMeetings = meetings.map(meeting => 
+        meeting._id === draggedMeeting._id 
+          ? { ...meeting, date: newDate }
+          : meeting
+      );
+      setMeetings(updatedMeetings);
+    }
+    
+    setDraggedMeeting(null);
+    console.log('Meeting moved to:', newDate);
+  };
+
+  const timeToMinutes = (time) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const minutesToTime = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  };
+
+  const checkOverlap = (newMeeting) => {
+    const newStart = timeToMinutes(newMeeting.time);
+    const newEnd = newStart + newMeeting.duration;
+    
+    const conflictingMeetings = meetings.filter(meeting => {
+      if (meeting.date !== newMeeting.date) return false;
+      
+      const existingStart = timeToMinutes(meeting.time);
+      const existingEnd = existingStart + meeting.duration;
+      
+      return (newStart < existingEnd && newEnd > existingStart);
+    });
+    
+    return conflictingMeetings;
+  };
+
+  const findNextAvailableSlot = (date, duration) => {
+    const dayMeetings = meetings
+      .filter(m => m.date === date)
+      .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+    
+    let currentTime = 9 * 60; // Start at 9 AM
+    const endOfDay = 18 * 60; // End at 6 PM
+    
+    for (const meeting of dayMeetings) {
+      const meetingStart = timeToMinutes(meeting.time);
+      const meetingEnd = meetingStart + meeting.duration;
+      
+      if (currentTime + duration <= meetingStart) {
+        return minutesToTime(currentTime);
+      }
+      currentTime = Math.max(currentTime, meetingEnd);
+    }
+    
+    if (currentTime + duration <= endOfDay) {
+      return minutesToTime(currentTime);
+    }
+    
+    return null;
+  };
+
+  const generateRecurringMeetings = (baseMeeting) => {
+    const meetings = [baseMeeting];
+    
+    if (baseMeeting.repeat === 'none') return meetings;
+
+    const baseDate = new Date(baseMeeting.date);
+    const occurrences = baseMeeting.repeat === 'daily' ? 7 : baseMeeting.repeat === 'weekly' ? 4 : 3;
+    
+    for (let i = 1; i <= occurrences; i++) {
+      const nextDate = new Date(baseDate);
+      
+      if (baseMeeting.repeat === 'daily') {
+        nextDate.setDate(baseDate.getDate() + i);
+      } else if (baseMeeting.repeat === 'weekly') {
+        nextDate.setDate(baseDate.getDate() + (i * 7));
+      } else if (baseMeeting.repeat === 'monthly') {
+        nextDate.setMonth(baseDate.getMonth() + i);
+      }
+      
+      meetings.push({
+        ...baseMeeting,
+        _id: 'demo' + Date.now() + '_' + i,
+        date: nextDate.toISOString().split('T')[0]
+      });
+    }
+    
+    return meetings;
+  };
+
+  const generateMeetingRoomName = (meeting) => {
+    // Create consistent room name based on meeting data
+    const projectId = meeting.projectId || 1;
+    const dateStr = meeting.date.replace(/-/g, '');
+    const timeStr = meeting.time.replace(':', '');
+    return `project-${projectId}-${dateStr}-${timeStr}`;
+  };
+
+  const createMeeting = async () => {
+    if (!newMeeting) return;
+
+    const conflicts = checkOverlap(newMeeting);
+    
+    if (conflicts.length > 0) {
+      const nextSlot = findNextAvailableSlot(newMeeting.date, newMeeting.duration);
+      setOverlapWarning({
+        conflicts,
+        newMeeting,
+        nextSlot,
+        message: `This meeting overlaps with ${conflicts.length} existing meeting(s)`
+      });
+      return;
+    }
+
+    const baseMeetingData = {
+      projectId: 1, // Required field for database
+      title: newMeeting.title,
+      date: newMeeting.date,
+      time: newMeeting.time,
+      duration: newMeeting.duration,
+      purpose: newMeeting.description || 'Calendar meeting',
+      location: 'Online (Jitsi Meet)',
+      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
+      hostId: JSON.parse(localStorage.getItem('user') || '{}')._id || 'demo_user',
+      reminder: newMeeting.reminder,
+      repeat: newMeeting.repeat,
+      roomName: generateMeetingRoomName({
+        projectId: 1,
+        date: newMeeting.date,
+        time: newMeeting.time
+      })
+    };
+
+    try {
+      console.log('🔄 Creating meeting:', baseMeetingData);
+      const response = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseMeetingData)
+      });
+      
+      if (response.ok) {
+        const savedMeeting = await response.json();
+        console.log('✅ Meeting saved to database:', savedMeeting);
+        fetchMeetings(); // Refresh meetings from database
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Failed to save meeting:', errorData);
+        // Add locally as fallback
+        const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
+        setMeetings([...meetings, ...allMeetings]);
+      }
+    } catch (error) {
+      console.error('❌ Error saving meeting:', error);
+      // Add locally as fallback
+      const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
+      setMeetings([...meetings, ...allMeetings]);
+    }
+    
+    setIsCreatingMeeting(false);
+    setNewMeeting(null);
+  };
+
+  const forceCreateMeeting = async () => {
+    const newMeetingData = {
+      _id: 'demo' + Date.now(),
+      title: overlapWarning.newMeeting.title,
+      date: overlapWarning.newMeeting.date,
+      time: overlapWarning.newMeeting.time,
+      duration: overlapWarning.newMeeting.duration,
+      purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
+      location: 'Online (Jitsi Meet)',
+      participants: overlapWarning.newMeeting.participants ? overlapWarning.newMeeting.participants.split(',').map(p => p.trim()) : [],
+      reminder: overlapWarning.newMeeting.reminder,
+      repeat: overlapWarning.newMeeting.repeat
+    };
+
+    setMeetings([...meetings, newMeetingData]);
+    setOverlapWarning(null);
+    setIsCreatingMeeting(false);
+    setNewMeeting(null);
+    console.log('✅ Meeting created despite overlap');
+  };
+
+  const useNextSlot = async () => {
+    if (!overlapWarning.nextSlot) return;
+    
+    const newMeetingData = {
+      _id: 'demo' + Date.now(),
+      title: overlapWarning.newMeeting.title,
+      date: overlapWarning.newMeeting.date,
+      time: overlapWarning.nextSlot,
+      duration: overlapWarning.newMeeting.duration,
+      purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
+      location: 'Online (Jitsi Meet)',
+      participants: overlapWarning.newMeeting.participants ? overlapWarning.newMeeting.participants.split(',').map(p => p.trim()) : [],
+      reminder: overlapWarning.newMeeting.reminder,
+      repeat: overlapWarning.newMeeting.repeat
+    };
+
+    setMeetings([...meetings, newMeetingData]);
+    setOverlapWarning(null);
+    setIsCreatingMeeting(false);
+    setNewMeeting(null);
+    console.log('✅ Meeting created with suggested slot');
+  };
+
+  const deleteMeeting = async (meetingId) => {
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        fetchMeetings(); // Refresh from database
+      } else {
+        // Delete locally as fallback
+        setMeetings(meetings.filter(meeting => meeting._id !== meetingId));
+      }
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      // Delete locally as fallback
+      setMeetings(meetings.filter(meeting => meeting._id !== meetingId));
+    }
+    
+    setSelectedMeeting(null);
+    console.log('🗑️ Meeting deleted');
+  };
+
+  const hasOverlap = (meeting) => {
+    const meetingStart = timeToMinutes(meeting.time);
+    const meetingEnd = meetingStart + meeting.duration;
+    
+    return meetings.some(other => {
+      if (other._id === meeting._id || other.date !== meeting.date) return false;
+      
+      const otherStart = timeToMinutes(other.time);
+      const otherEnd = otherStart + other.duration;
+      
+      return (meetingStart < otherEnd && meetingEnd > otherStart);
+    });
+  };
+
+  const getMeetingColor = (meeting) => {
+    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3'];
+    const hash = meeting.title.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const formatTime = (time) => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    router.push('/');
+  };
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return (
+    <div>
+      <Head>
+        <style jsx>{`
+          @keyframes pulse {
+            0% { box-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+            50% { box-shadow: 0 0 20px rgba(255, 0, 0, 1); }
+            100% { box-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+          }
+        `}</style>
+      </Head>
+      <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)} Dashboard` : 'Dashboard'}</h1>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <Link href="/clientdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
+          <Link href="/clientdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <div style={{ position: 'relative' }} className="profile-dropdown">
+            <button
+              onClick={() => {
+                console.log('Profile button clicked, current state:', showProfile);
+                setShowProfile(!showProfile);
+              }}
+              style={{ 
+                background: 'rgba(255,255,255,0.1)', 
+                color: 'white', 
+                border: '2px solid rgba(255,255,255,0.5)', 
+                borderRadius: '50%', 
+                width: '40px', 
+                height: '40px', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = 'rgba(255,255,255,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = 'rgba(255,255,255,0.1)';
+              }}
+            >
+              👤
+            </button>
+            {showProfile && (
+              <div style={{
+                position: 'absolute',
+                top: '50px',
+                right: '0',
+                background: 'white',
+                color: 'black',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                padding: '15px',
+                minWidth: '200px',
+                zIndex: 1000
+              }}>
+                <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>👤 {currentUser?.username || currentUser?.name || 'User'}</div>
+                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>📧 {currentUser?.email || 'No email'}</div>
+                  <div style={{ fontSize: '14px', color: '#666' }}>🏷️ {currentUser?.role || 'No role'}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowProfile(false);
+                    logout();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🚪 Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      <div style={{ padding: '20px' }}>
+        <button 
+          onClick={() => router.push('/clientdashboard/projects/view')}
+          style={{ marginBottom: '20px', padding: '8px 16px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          ← Back to Project
+        </button>
+
+        <div style={{ background: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ margin: 0 }}>📅 Meeting Calendar</h2>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button
+                onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
+                style={{ padding: '8px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                ← Prev
+              </button>
+              <h3 style={{ margin: '0 20px' }}>
+                {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+              </h3>
+              <button
+                onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
+                style={{ padding: '8px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '1px', background: '#ddd', border: '1px solid #ddd' }}>
+            {dayNames.map(day => (
+              <div key={day} style={{ background: '#f8f9fa', padding: '10px', textAlign: 'center', fontWeight: 'bold' }}>
+                {day}
+              </div>
+            ))}
+            
+            {getDaysInMonth(currentDate).map((date, index) => (
+              <div
+                key={index}
+                style={{
+                  background: date ? 'white' : '#f8f9fa',
+                  minHeight: '120px',
+                  padding: '5px',
+                  border: '1px solid #eee',
+                  position: 'relative',
+                  cursor: (date && currentUser?.role === 'project manager') ? 'pointer' : 'default'
+                }}
+                onDragOver={currentUser?.role === 'project manager' ? handleDragOver : undefined}
+                onDrop={currentUser?.role === 'project manager' ? (e) => handleDrop(e, date) : undefined}
+                onClick={(e) => date && currentUser?.role === 'project manager' && handleCellClick(date, e)}
+              >
+                {date && (
+                  <>
+                    <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+                      {date.getDate()}
+                    </div>
+                    {getMeetingsForDate(date).map(meeting => (
+                      <div
+                        key={meeting._id}
+                        draggable={currentUser?.role === 'project manager'}
+                        onDragStart={(e) => currentUser?.role === 'project manager' && handleDragStart(e, meeting)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedMeeting(meeting);
+                        }}
+                        onMouseEnter={(e) => {
+                          setHoveredMeeting(meeting);
+                          setTooltipPosition({ x: e.clientX, y: e.clientY });
+                        }}
+                        onMouseLeave={() => setHoveredMeeting(null)}
+                        onMouseMove={(e) => {
+                          if (hoveredMeeting?._id === meeting._id) {
+                            setTooltipPosition({ x: e.clientX, y: e.clientY });
+                          }
+                        }}
+                        style={{
+                          background: getMeetingColor(meeting),
+                          color: 'white',
+                          padding: '2px 5px',
+                          marginBottom: '2px',
+                          borderRadius: '3px',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          opacity: draggedMeeting?._id === meeting._id ? 0.5 : 1,
+                          border: hasOverlap(meeting) ? '3px solid #ff0000' : '1px solid transparent',
+                          boxShadow: hasOverlap(meeting) ? '0 0 15px rgba(220, 53, 69, 0.8), inset 0 0 10px rgba(255,255,255,0.3)' : 'none',
+                          background: hasOverlap(meeting) ? '#dc3545' : getMeetingColor(meeting),
+                          transform: hasOverlap(meeting) ? 'scale(1.02)' : 'scale(1)',
+                          transition: 'all 0.3s ease',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          position: 'relative',
+                          animation: hasOverlap(meeting) ? 'pulse 1s infinite' : 'none'
+                        }}
+                      >
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {formatTime(meeting.time)} - {meeting.title}
+                        </span>
+                        {hasOverlap(meeting) && (
+                          <span style={{ fontSize: '10px', marginRight: '4px' }}>⚠️</span>
+                        )}
+                        {(meeting.participants && meeting.participants.includes(currentUser?.id)) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const roomName = meeting.roomName || generateMeetingRoomName(meeting);
+                              const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
+                              console.log('🎆 Joining meeting:', meetingUrl);
+                              window.open(meetingUrl, '_blank');
+                            }}
+                            style={{
+                              background: 'rgba(255,255,255,0.3)',
+                              border: 'none',
+                              color: 'white',
+                              padding: '2px 4px',
+                              borderRadius: '2px',
+                              fontSize: '9px',
+                              cursor: 'pointer',
+                              marginLeft: '4px'
+                            }}
+                          >
+                            Join
+                          </button>
+                        )}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            bottom: '0',
+                            right: '0',
+                            width: '8px',
+                            height: '8px',
+                            background: 'rgba(255,255,255,0.7)',
+                            cursor: 'se-resize',
+                            borderRadius: '0 0 3px 0'
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            setResizingMeeting(meeting);
+                            setResizeStartY(e.clientY);
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '5px',
+                        right: '5px',
+                        background: '#28a745',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Debug Section */}
+          <div style={{ marginTop: '20px', padding: '15px', background: '#fff3cd', borderRadius: '5px', border: '1px solid #ffeaa7' }}>
+            <h4 style={{ margin: '0 0 15px 0', color: '#856404' }}>🔧 Debug Info:</h4>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <button
+                onClick={() => {
+                  console.log('🔄 Manual refresh triggered');
+                  fetchMeetings();
+                }}
+                style={{ padding: '5px 10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
+              >
+                🔄 Refresh Meetings
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/test-meetings');
+                    const result = await response.json();
+                    console.log('🧪 Test result:', result);
+                    alert(`Test: ${result.message} - Found ${result.count} meetings`);
+                    fetchMeetings();
+                  } catch (error) {
+                    console.error('Test error:', error);
+                    alert('Test failed - check console');
+                  }
+                }}
+                style={{ padding: '5px 10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
+              >
+                🧪 Test Database
+              </button>
+            </div>
+            <div style={{ fontSize: '13px', color: '#856404' }}>
+              <strong>Meetings loaded:</strong> {meetings.length} | 
+              <strong>API Status:</strong> {meetings.length > 0 ? '✅ Working' : '❌ No data'}
+            </div>
+            {meetings.length > 0 && (
+              <div style={{ marginTop: '10px', fontSize: '11px', background: '#f8f9fa', padding: '8px', borderRadius: '3px' }}>
+                <strong>All meetings:</strong><br/>
+                {meetings.map((m, i) => (
+                  <div key={i}>
+                    {i + 1}. {m.title} on {m.date} at {m.time} (Duration: {m.duration}min)
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '5px' }}>
+            <h4 style={{ margin: '0 0 15px 0' }}>📋 Calendar Features Demo:</h4>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
+                <h5 style={{ margin: '0 0 8px 0', color: '#28a745' }}>📝 Advanced Calendar Features:</h5>
+                <div style={{ fontSize: '14px' }}>
+                  {currentUser?.role === 'project manager' ? '✅' : '❌'} <strong>Smart Click:</strong> {currentUser?.role === 'project manager' ? 'Click position sets meeting time' : 'Only Project Managers can create meetings'}<br/>
+                  {currentUser?.role === 'project manager' ? '✅' : '❌'} <strong>Drag & Drop:</strong> {currentUser?.role === 'project manager' ? 'Move meetings between dates' : 'View-only access for your role'}<br/>
+                  {currentUser?.role === 'project manager' ? '✅' : '❌'} <strong>Resize Duration:</strong> {currentUser?.role === 'project manager' ? 'Drag bottom-right corner to resize' : 'View-only access for your role'}<br/>
+                  ✅ <strong>Color Coded:</strong> Each meeting has unique colors<br/>
+                  ✅ <strong>Conflict Detection:</strong> Red pulsing border for overlaps<br/>
+                  ✅ <strong>Smart Suggestions:</strong> Auto-suggest next free slots<br/>
+                  ✅ <strong>Local Timezone:</strong> All times in your timezone<br/>
+                  ✅ <strong>Recurring Options:</strong> Daily/Weekly/Monthly repeats
+                </div>
+              </div>
+              
+              <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
+                <h5 style={{ margin: '0 0 8px 0', color: '#007bff' }}>🕰️ Demo Meetings:</h5>
+                <div style={{ fontSize: '14px' }}>
+                  • <span style={{ background: '#ff6b6b', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>Today</span> E-commerce (9:00 AM)<br/>
+                  • <span style={{ background: '#4ecdc4', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>Tomorrow</span> Mobile App (2:30 PM)<br/>
+                  • <span style={{ background: '#45b7d1', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>+2 days</span> CRM System (11:00 AM)<br/>
+                  • <span style={{ background: '#96ceb4', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>+3 days</span> Team Standup (10:00 AM)
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ padding: '10px', background: '#e8f5e8', borderRadius: '5px', border: '1px solid #28a745' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>🎆</span>
+                <div>
+                  <strong>Try it now!</strong> {currentUser?.role === 'project manager' ? 'Click on any calendar date to create a meeting, or click "Join" on existing meetings to start Jitsi video calls!' : 'Click "Join" on meetings where you are a participant to start video calls!'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {selectedMeeting && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            width: '400px',
+            maxWidth: '90vw'
+          }}>
+            <h3>📅 Meeting Details</h3>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Title:</strong> {selectedMeeting.title}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Date:</strong> {selectedMeeting.date ? selectedMeeting.date.split('-').reverse().join('-') : selectedMeeting.date}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Time:</strong> {formatTime(selectedMeeting.time)}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Duration:</strong> {selectedMeeting.duration} minutes
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Location:</strong> {selectedMeeting.location}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Purpose:</strong> {selectedMeeting.purpose}
+            </div>
+            {selectedMeeting.participants && selectedMeeting.participants.length > 0 && (
+              <div style={{ marginBottom: '15px' }}>
+                <strong>Participants:</strong> {Array.isArray(selectedMeeting.participants) 
+                  ? selectedMeeting.participants.map(p => {
+                      // If it's an object ID, find the username from team
+                      if (typeof p === 'string' && p.length === 24) {
+                        const user = team.find(u => u.id === p);
+                        return user ? user.username || user.name : p;
+                      }
+                      return p;
+                    }).join(', ')
+                  : selectedMeeting.participants}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setSelectedMeeting(null)}
+                style={{ padding: '8px 16px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+              {(selectedMeeting.participants && selectedMeeting.participants.includes(currentUser?.id)) && (
+                <button
+                  onClick={() => {
+                    const roomName = selectedMeeting.roomName || generateMeetingRoomName(selectedMeeting);
+                    const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
+                    console.log('🎆 Joining meeting from modal:', meetingUrl);
+                    window.open(meetingUrl, '_blank');
+                  }}
+                  style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  🎥 Join Meeting
+                </button>
+              )}
+              {currentUser?.role === 'project manager' && (
+                <button
+                  onClick={() => deleteMeeting(selectedMeeting._id)}
+                  style={{ padding: '8px 16px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  🗑️ Delete Meeting
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCreatingMeeting && currentUser?.role === 'project manager' && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            width: '500px',
+            maxWidth: '90vw',
+            maxHeight: '80vh',
+            overflowY: 'auto'
+          }}>
+            <h3>📅 Schedule Meeting</h3>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label><strong>Meeting Title:</strong></label>
+              <input
+                type="text"
+                placeholder="Enter meeting title"
+                value={newMeeting?.title || ''}
+                onChange={(e) => setNewMeeting({...newMeeting, title: e.target.value})}
+                style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div>
+                <label><strong>Date:</strong></label>
+                <div style={{ padding: '8px', marginTop: '5px', background: '#f8f9fa', border: '1px solid #ddd', borderRadius: '4px' }}>
+                  {newMeeting?.date ? newMeeting.date.split('-').reverse().join('-') : newMeeting?.date}
+                </div>
+              </div>
+              <div>
+                <label><strong>Time:</strong></label>
+                <input
+                  type="time"
+                  value={newMeeting?.time || ''}
+                  onChange={(e) => setNewMeeting({...newMeeting, time: e.target.value})}
+                  style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
+                />
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label><strong>Duration:</strong></label>
+              <select
+                value={newMeeting?.duration || 60}
+                onChange={(e) => setNewMeeting({...newMeeting, duration: parseInt(e.target.value)})}
+                style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
+              >
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>1 hour</option>
+                <option value={90}>1.5 hours</option>
+                <option value={120}>2 hours</option>
+                <option value={180}>3 hours</option>
+              </select>
+            </div>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label><strong>Select Participants:</strong></label>
+              <div style={{ marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px', maxHeight: '150px', overflowY: 'auto', background: 'white' }}>
+                {team.length > 0 ? (
+                  <>
+                    <div style={{ padding: '8px', borderBottom: '1px solid #eee', background: '#f8f9fa' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedParticipants.length === team.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedParticipants(team.map(user => user.id));
+                            } else {
+                              setSelectedParticipants([]);
+                            }
+                          }}
+                          style={{ marginRight: '8px' }}
+                        />
+                        Select All ({team.length} users)
+                      </label>
+                    </div>
+                    {team.map(user => (
+                      <div key={user.id} style={{ padding: '8px', borderBottom: '1px solid #f0f0f0' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedParticipants.includes(user.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedParticipants([...selectedParticipants, user.id]);
+                              } else {
+                                setSelectedParticipants(selectedParticipants.filter(id => id !== user.id));
+                              }
+                            }}
+                            style={{ marginRight: '8px' }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{user.name || user.username}</div>
+                            <div style={{ fontSize: '12px', color: '#666' }}>{user.email} • {user.role}</div>
+                          </div>
+                        </label>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div style={{ padding: '12px', color: '#666', textAlign: 'center' }}>Loading users...</div>
+                )}
+              </div>
+              <small style={{ color: '#6c757d', marginTop: '5px', display: 'block' }}>
+                Selected: {selectedParticipants.length} participant(s)
+              </small>
+            </div>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <label><strong>Description:</strong></label>
+              <textarea
+                placeholder="Meeting agenda, notes, or description"
+                value={newMeeting?.description || ''}
+                onChange={(e) => setNewMeeting({...newMeeting, description: e.target.value})}
+                rows={3}
+                style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px', resize: 'vertical' }}
+              />
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div>
+                <label><strong>Reminder:</strong></label>
+                <select
+                  value={newMeeting?.reminder || 15}
+                  onChange={(e) => setNewMeeting({...newMeeting, reminder: parseInt(e.target.value)})}
+                  style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
+                >
+                  <option value={0}>No reminder</option>
+                  <option value={5}>5 minutes before</option>
+                  <option value={15}>15 minutes before</option>
+                  <option value={30}>30 minutes before</option>
+                  <option value={60}>1 hour before</option>
+                  <option value={1440}>1 day before</option>
+                </select>
+              </div>
+              <div>
+                <label><strong>Repeat:</strong></label>
+                <select
+                  value={newMeeting?.repeat || 'none'}
+                  onChange={(e) => setNewMeeting({...newMeeting, repeat: e.target.value})}
+                  style={{ width: '100%', padding: '8px', marginTop: '5px', border: '1px solid #ddd', borderRadius: '4px' }}
+                >
+                  <option value="none">No repeat</option>
+                  <option value="daily">Daily (7 days)</option>
+                  <option value="weekly">Weekly (4 weeks)</option>
+                  <option value="monthly">Monthly (3 months)</option>
+                </select>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setIsCreatingMeeting(false);
+                  setSelectedParticipants([]);
+                }}
+                style={{ padding: '10px 20px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createMeeting}
+                disabled={selectedParticipants.length === 0}
+                style={{ 
+                  padding: '10px 20px', 
+                  background: selectedParticipants.length === 0 ? '#ccc' : '#28a745', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '4px', 
+                  cursor: selectedParticipants.length === 0 ? 'not-allowed' : 'pointer' 
+                }}
+              >
+                📅 Create Meeting ({selectedParticipants.length} participants)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Overlap Warning Modal */}
+      {overlapWarning && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '25px',
+            borderRadius: '12px',
+            width: '500px',
+            maxWidth: '90vw',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            border: '3px solid #dc3545'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+              <span style={{ fontSize: '24px', marginRight: '10px' }}>⚠️</span>
+              <h3 style={{ margin: 0, color: '#dc3545', fontSize: '20px' }}>Meeting Overlap Detected!</h3>
+            </div>
+            
+            <div style={{ 
+              background: '#f8d7da', 
+              color: '#721c24', 
+              padding: '12px', 
+              borderRadius: '6px', 
+              marginBottom: '20px',
+              border: '1px solid #f5c6cb'
+            }}>
+              <strong>{overlapWarning.message}</strong>
+            </div>
+            
+            <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>Conflicting Meetings:</h4>
+            <div style={{ marginBottom: '20px', maxHeight: '200px', overflowY: 'auto' }}>
+              {overlapWarning.conflicts.map(conflict => (
+                <div key={conflict._id} style={{ 
+                  padding: '12px', 
+                  background: '#fff3cd', 
+                  marginBottom: '8px', 
+                  borderRadius: '6px', 
+                  border: '2px solid #ffeaa7',
+                  borderLeft: '4px solid #dc3545'
+                }}>
+                  <div style={{ fontWeight: 'bold', color: '#856404', marginBottom: '4px' }}>
+                    📅 {conflict.title}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#856404' }}>
+                    🕐 {formatTime(conflict.time)} ({conflict.duration}min)
+                  </div>
+                  {conflict.purpose && (
+                    <div style={{ fontSize: '12px', color: '#6c757d', marginTop: '4px' }}>
+                      📝 {conflict.purpose}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {overlapWarning.nextSlot && (
+              <div style={{
+                background: '#d4edda',
+                color: '#155724',
+                padding: '12px',
+                borderRadius: '6px',
+                marginBottom: '20px',
+                border: '1px solid #c3e6cb'
+              }}>
+                <strong>💡 Suggested alternative time: {formatTime(overlapWarning.nextSlot)}</strong>
+              </div>
+            )}
+            
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setOverlapWarning(null)}
+                style={{ 
+                  padding: '10px 16px', 
+                  background: '#6c757d', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '6px', 
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                ❌ Cancel
+              </button>
+              {overlapWarning.nextSlot && (
+                <button
+                  onClick={useNextSlot}
+                  style={{ 
+                    padding: '10px 16px', 
+                    background: '#28a745', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '6px', 
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  ✅ Use Suggested Time
+                </button>
+              )}
+              <button
+                onClick={forceCreateMeeting}
+                style={{ 
+                  padding: '10px 16px', 
+                  background: '#dc3545', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '6px', 
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                ⚠️ Create Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hoveredMeeting && (
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltipPosition.x + 15,
+            top: tooltipPosition.y - 10,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            padding: '12px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            zIndex: 1001,
+            maxWidth: '280px',
+            boxShadow: '0 8px 25px rgba(0,0,0,0.4)',
+            pointerEvents: 'none',
+            border: '1px solid rgba(255,255,255,0.2)'
+          }}
+        >
+          <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '14px', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '5px' }}>
+            📅 {hoveredMeeting.title}
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            🕰️ <strong>Time:</strong> {formatTime(hoveredMeeting.time)} ({hoveredMeeting.duration || 60} min)
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            📅 <strong>Date:</strong> {hoveredMeeting.date ? hoveredMeeting.date.split('-').reverse().join('-') : hoveredMeeting.date}
+          </div>
+          <div style={{ marginBottom: '4px' }}>
+            📍 <strong>Location:</strong> {hoveredMeeting.location || 'Online Meeting'}
+          </div>
+          {hoveredMeeting.purpose && (
+            <div style={{ marginBottom: '4px' }}>
+              📝 <strong>Purpose:</strong> {hoveredMeeting.purpose}
+            </div>
+          )}
+          {hoveredMeeting.participants && hoveredMeeting.participants.length > 0 && (
+            <div style={{ marginBottom: '4px' }}>
+              👥 <strong>Participants:</strong> {hoveredMeeting.participants.length} people
+            </div>
+          )}
+          {hasOverlap(hoveredMeeting) && (
+            <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginTop: '8px', padding: '4px', background: 'rgba(255,107,107,0.2)', borderRadius: '4px' }}>
+              ⚠️ CONFLICT: Overlaps with another meeting!
+            </div>
+          )}
+          <div style={{ marginTop: '8px', fontSize: '11px', opacity: '0.8', fontStyle: 'italic' }}>
+            Click to view details • Drag to move
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

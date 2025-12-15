@@ -8,19 +8,46 @@ export default function ProjectManagerViewProject() {
   const router = useRouter();
 
   useEffect(() => {
-    const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/projects`)
-        .then(res => res.json())
-        .then(projects => {
-          const selectedProject = projects.find(p => p.id === parseInt(projectId));
-          setProject(selectedProject);
-        });
-
-      fetch(`/api/meetings?projectId=${projectId}`)
-        .then(res => res.json())
-        .then(data => setMeetings(data));
-    }
+    const fetchData = async () => {
+      const projectId = localStorage.getItem('selectedProjectId');
+      const userEmail = localStorage.getItem('userEmail');
+      
+      if (projectId) {
+        // Fetch project data
+        const projectRes = await fetch(`/api/projects`);
+        const projects = await projectRes.json();
+        const selectedProject = projects.find(p => p.id === parseInt(projectId));
+        setProject(selectedProject);
+        
+        if (userEmail) {
+          try {
+            // Get all meetings for the project
+            const meetingsRes = await fetch(`/api/meetings?projectId=${projectId}`);
+            const allMeetings = await meetingsRes.json();
+            
+            // Get current user info
+            const teamRes = await fetch('/api/team');
+            const teamData = await teamRes.json();
+            const currentUser = teamData.find(user => user.email === userEmail);
+            
+            if (currentUser) {
+              // Filter meetings where current user is a participant
+              const userMeetings = allMeetings.filter(meeting => 
+                meeting.participants && meeting.participants.includes(currentUser.id)
+              );
+              setMeetings(userMeetings);
+            } else {
+              setMeetings([]);
+            }
+          } catch (error) {
+            console.error('Error fetching meetings:', error);
+            setMeetings([]);
+          }
+        }
+      }
+    };
+    
+    fetchData();
   }, []);
 
   const logout = () => {
@@ -88,8 +115,9 @@ export default function ProjectManagerViewProject() {
                   <button 
                     onClick={() => {
                       // Generate consistent meeting link
-                      const roomName = `priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meeting.date}-${meeting.time.replace(':', '')}`;
-                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/${roomName}`;
+                      const meetingId = meeting._id || meeting.id || 'default';
+                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meetingId}`;
+                      console.log('Opening meeting room:', meetingRoom);
                       window.open(meetingRoom, '_blank');
                     }}
                     style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}

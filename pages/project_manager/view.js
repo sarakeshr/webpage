@@ -61,7 +61,7 @@ export default function ViewProject() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Project Manager Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px' }}>
           <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
-          <Link href="/project_manager/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
       </nav>
@@ -111,7 +111,7 @@ export default function ViewProject() {
           {meetings.length > 0 ? (
             <div>
               {meetings.map(meeting => (
-                <div key={meeting.id} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '8px', paddingBottom: '8px', marginBottom: '10px', background: '#f8f9fa' }}>
+                <div key={meeting._id || meeting.id} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '8px', paddingBottom: '8px', marginBottom: '10px', background: '#f8f9fa' }}>
                   <div style={{ fontWeight: 'bold', color: '#333' }}>{meeting.title}</div>
                   <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
                     <strong>Date:</strong> {meeting.date} | <strong>Time:</strong> {meeting.time}
@@ -121,12 +121,15 @@ export default function ViewProject() {
                   </div>
                   <button 
                     onClick={() => {
-                      localStorage.setItem('selectedProjectId', project.id);
-                      router.push('/project_manager/jitsi');
+                      // Generate consistent meeting link based on meeting details
+                      const meetingId = meeting._id || meeting.id || 'default';
+                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meetingId}`;
+                      console.log('Opening meeting room:', meetingRoom);
+                      window.open(meetingRoom, '_blank');
                     }}
-                    style={{ marginTop: '8px', padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                    style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                   >
-                    Join Meeting
+                    🚀 Join Meeting
                   </button>
                 </div>
               ))}
