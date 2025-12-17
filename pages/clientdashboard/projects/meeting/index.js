@@ -81,12 +81,12 @@ export default function JitsiMeeting() {
           const selectedProject = projects.find(p => p.id === projectId || p.id === parseInt(projectId));
           if (selectedProject) {
             setProject(selectedProject);
-            generateMeetingLink(projectId);
+            setTimeout(() => generateMeetingLink(projectId), 100);
           } else {
             // Use mapped project based on ID
             const mappedProject = getProjectById(projectId);
             setProject(mappedProject);
-            generateMeetingLink(projectId);
+            setTimeout(() => generateMeetingLink(projectId), 100);
           }
         })
         .catch(error => {
@@ -94,13 +94,13 @@ export default function JitsiMeeting() {
           // Use mapped project based on ID
           const mappedProject = getProjectById(projectId);
           setProject(mappedProject);
-          generateMeetingLink(projectId);
+          setTimeout(() => generateMeetingLink(projectId), 100);
         });
     } else {
       // No project ID, set a default
       const defaultProject = getProjectById('1');
       setProject(defaultProject);
-      generateMeetingLink(1);
+      setTimeout(() => generateMeetingLink(1), 100);
     }
 
     fetch('/api/team')
@@ -112,22 +112,20 @@ export default function JitsiMeeting() {
       });
   }, []);
 
-  const generateMeetingLink = (projectId) => {
-    // Generate a consistent meeting room name
-    const meetingId = `priam-project-${projectId}`;
+  const generateMeetingLink = (projectId, date = null) => {
+    const today = date || new Date();
+    const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-'); // dd-mm-yyyy format
+    const projectName = project?.name?.replace(/\s+/g, '-').toLowerCase() || `project-${projectId}`;
+    const meetingId = `${projectName}-${dateStr}`;
     setMeetingLink(`${process.env.NEXT_PUBLIC_JITSI_URL}/${meetingId}`);
   };
 
-  // Update meeting link when date/time changes
-  useEffect(() => {
-    if (project && meetingDate && meetingTime) {
-      const roomName = `priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meetingDate}-${meetingTime.replace(':', '')}`;
-      setMeetingLink(`${process.env.NEXT_PUBLIC_JITSI_URL}/${roomName}`);
-    }
-  }, [project, meetingDate, meetingTime]);
-
   const joinMeeting = () => {
-    window.open(meetingLink, '_blank');
+    const projectName = project?.name?.replace(/\s+/g, '-').toLowerCase() || 'meeting';
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-');
+    const roomName = `${projectName}-${dateStr}`;
+    window.open(`/meeting/${roomName}`, '_blank');
   };
 
   const copyMeetingLink = () => {
@@ -279,7 +277,12 @@ export default function JitsiMeeting() {
                 <input
                   type="date"
                   value={meetingDate}
-                  onChange={(e) => setMeetingDate(e.target.value)}
+                  onChange={(e) => {
+                    setMeetingDate(e.target.value);
+                    if (e.target.value && project) {
+                      generateMeetingLink(project.id, new Date(e.target.value));
+                    }
+                  }}
                   style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
                   required
                 />

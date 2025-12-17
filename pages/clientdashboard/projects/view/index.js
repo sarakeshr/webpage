@@ -314,18 +314,10 @@ export default function ViewProject() {
                   </div>
                   <button 
                     onClick={() => {
-                      // Generate consistent room name based on meeting data
-                      const generateMeetingRoomName = (meeting) => {
-                        const projectId = meeting.projectId || 1;
-                        const dateStr = meeting.date.replace(/-/g, '');
-                        const timeStr = meeting.time.replace(':', '');
-                        return `project-${projectId}-${dateStr}-${timeStr}`;
-                      };
-                      
-                      const roomName = meeting.roomName || generateMeetingRoomName(meeting);
-                      const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
-                      console.log('🎆 Joining meeting from upcoming:', meetingUrl);
-                      window.open(meetingUrl, '_blank');
+                      const meetingTitle = meeting.title.replace(/\s+/g, '-').toLowerCase();
+                      const dateStr = meeting.date.split('-').reverse().join('-');
+                      const roomName = `${meetingTitle}-${dateStr}`;
+                      window.open(`/meeting/${roomName}`, '_blank');
                     }}
                     style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                   >

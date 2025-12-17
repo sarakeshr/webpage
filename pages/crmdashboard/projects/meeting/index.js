@@ -18,7 +18,8 @@ export default function JitsiMeeting() {
         .then(projects => {
           const selectedProject = projects.find(p => p.id === parseInt(projectId));
           setProject(selectedProject);
-          generateMeetingLink(projectId);
+          // Generate link after project is set
+          setTimeout(() => generateMeetingLink(projectId), 100);
         });
     }
 
@@ -27,13 +28,20 @@ export default function JitsiMeeting() {
       .then(data => setParticipants(data));
   }, []);
 
-  const generateMeetingLink = (projectId) => {
-    const meetingId = `priam-project-${projectId}-${Date.now()}`;
-    setMeetingLink(`https://meet.jit.si/${meetingId}`);
+  const generateMeetingLink = (projectId, date = null) => {
+    const today = date || new Date();
+    const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-'); // dd-mm-yyyy format
+    const projectName = project?.name?.replace(/\s+/g, '-').toLowerCase() || `project-${projectId}`;
+    const meetingId = `${projectName}-${dateStr}`;
+    setMeetingLink(`${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${meetingId}`);
   };
 
   const joinMeeting = () => {
-    window.open(meetingLink, '_blank');
+    const projectName = project?.name?.replace(/\s+/g, '-').toLowerCase() || 'meeting';
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB').replace(/\//g, '-');
+    const roomName = `${projectName}-${dateStr}`;
+    window.open(`/meeting/${roomName}`, '_blank');
   };
 
   const copyMeetingLink = () => {
@@ -106,7 +114,12 @@ export default function JitsiMeeting() {
                 <input
                   type="date"
                   value={meetingDate}
-                  onChange={(e) => setMeetingDate(e.target.value)}
+                  onChange={(e) => {
+                    setMeetingDate(e.target.value);
+                    if (e.target.value && project) {
+                      generateMeetingLink(project.id, new Date(e.target.value));
+                    }
+                  }}
                   style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
                 />
               </div>

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
 
-export default function Calendar() {
+export default function ProjectManagerCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [meetings, setMeetings] = useState([]);
   const [draggedMeeting, setDraggedMeeting] = useState(null);
@@ -12,26 +12,21 @@ export default function Calendar() {
   const [hoveredMeeting, setHoveredMeeting] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [selectedMeeting, setSelectedMeeting] = useState(null);
-  const [overlapWarning, setOverlapWarning] = useState(null);
   const [resizingMeeting, setResizingMeeting] = useState(null);
   const [resizeStartY, setResizeStartY] = useState(0);
   const [team, setTeam] = useState([]);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [overlapWarning, setOverlapWarning] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
     fetchMeetings();
     fetchTeam();
-    // Get current user from localStorage
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    console.log('👤 Current user loaded:', user);
-    console.log('👤 User role:', user?.role);
-    console.log('👤 Is project manager?', user?.role === 'project manager' || user?.role === 'project_manager');
     setCurrentUser(user);
     
-    // Close profile dropdown when clicking outside
     const handleClickOutside = (event) => {
       if (showProfile && !event.target.closest('.profile-dropdown')) {
         setShowProfile(false);
@@ -46,74 +41,20 @@ export default function Calendar() {
     try {
       const response = await fetch('/api/team');
       const data = await response.json();
-      console.log('👥 Team loaded:', data.length);
       setTeam(data || []);
     } catch (error) {
-      console.error('❌ Error fetching team:', error);
       setTeam([]);
     }
   };
 
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (resizingMeeting) {
-        const deltaY = e.clientY - resizeStartY;
-        const durationChange = Math.round(deltaY / 2);
-        const newDuration = Math.max(15, resizingMeeting.duration + durationChange);
-        
-        setMeetings(prev => prev.map(m => 
-          m._id === resizingMeeting._id 
-            ? { ...m, duration: newDuration }
-            : m
-        ));
-      }
-    };
-    
-    const handleMouseUp = () => {
-      if (resizingMeeting) {
-        setResizingMeeting(null);
-        setResizeStartY(0);
-      }
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [resizingMeeting, resizeStartY]);
-
-
-
   const fetchMeetings = async () => {
     try {
       const response = await fetch('/api/meetings');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log('📅 API Response:', response.status);
-      console.log('📅 Raw data:', data);
-      console.log('📅 Data type:', typeof data);
-      console.log('📅 Is array:', Array.isArray(data));
-      console.log('📅 Meetings count:', data?.length || 0);
-      if (data.length > 0) {
-        console.log('📅 First meeting date:', data[0].date);
-        console.log('📅 First meeting time:', data[0].time);
-        console.log('📅 First meeting title:', data[0].title);
-      }
-      
-      if (Array.isArray(data)) {
-        setMeetings(data);
-        console.log('✅ Meetings set successfully:', data.length);
-      } else {
-        console.warn('⚠️ Data is not an array:', data);
-        setMeetings([]);
+      if (response.ok) {
+        const data = await response.json();
+        setMeetings(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('❌ Fetch error:', error);
       setMeetings([]);
     }
   };
@@ -127,48 +68,37 @@ export default function Calendar() {
     const startingDayOfWeek = firstDay.getDay();
 
     const days = [];
-    
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
-    
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(new Date(year, month, day));
     }
-    
     return days;
   };
 
   const getMeetingsForDate = (date) => {
     if (!date) return [];
-    // Fix timezone issue by using local date
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     
-    console.log('📅 Looking for date:', dateStr);
-    console.log('📅 Available meeting dates:', meetings.map(m => m.date));
-    
-    const matchingMeetings = meetings.filter(meeting => meeting.date === dateStr);
-    console.log('📅 Matching meetings for', dateStr, ':', matchingMeetings.length);
-    
-    return matchingMeetings.sort((a, b) => a.time.localeCompare(b.time));
+    return meetings.filter(meeting => meeting.date === dateStr)
+                  .sort((a, b) => a.time.localeCompare(b.time));
   };
 
   const handleCellClick = (date, event) => {
     if (!date) return;
     
-    // Calculate time based on click position
     const rect = event.currentTarget.getBoundingClientRect();
     const clickY = event.clientY - rect.top;
     const cellHeight = rect.height;
-    const hourFraction = (clickY / cellHeight) * 24; // 24 hours in a day
+    const hourFraction = (clickY / cellHeight) * 24;
     const hour = Math.floor(hourFraction);
     const minute = Math.floor((hourFraction - hour) * 60);
     const clickTime = `${hour.toString().padStart(2, '0')}:${Math.floor(minute / 15) * 15}`.padStart(5, '0');
     
-    // Fix timezone issue by using local date
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -202,45 +132,18 @@ export default function Calendar() {
     e.preventDefault();
     if (!draggedMeeting || !date) return;
 
-    // Fix timezone issue by using local date
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const newDate = `${year}-${month}-${day}`;
 
-    try {
-      // Update meeting in database
-      const response = await fetch(`/api/meetings/${draggedMeeting._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: newDate })
-      });
-
-      if (response.ok) {
-        console.log('✅ Meeting date updated in database');
-        fetchMeetings(); // Refresh from database
-      } else {
-        // Update locally as fallback
-        const updatedMeetings = meetings.map(meeting => 
-          meeting._id === draggedMeeting._id 
-            ? { ...meeting, date: newDate }
-            : meeting
-        );
-        setMeetings(updatedMeetings);
-      }
-    } catch (error) {
-      console.error('Error updating meeting:', error);
-      // Update locally as fallback
-      const updatedMeetings = meetings.map(meeting => 
-        meeting._id === draggedMeeting._id 
-          ? { ...meeting, date: newDate }
-          : meeting
-      );
-      setMeetings(updatedMeetings);
-    }
-    
+    const updatedMeetings = meetings.map(meeting => 
+      meeting._id === draggedMeeting._id 
+        ? { ...meeting, date: newDate }
+        : meeting
+    );
+    setMeetings(updatedMeetings);
     setDraggedMeeting(null);
-    console.log('Meeting moved to:', newDate);
   };
 
   const timeToMinutes = (time) => {
@@ -295,6 +198,20 @@ export default function Calendar() {
     return null;
   };
 
+  const hasOverlap = (meeting) => {
+    const meetingStart = timeToMinutes(meeting.time);
+    const meetingEnd = meetingStart + meeting.duration;
+    
+    return meetings.some(other => {
+      if (other._id === meeting._id || other.date !== meeting.date) return false;
+      
+      const otherStart = timeToMinutes(other.time);
+      const otherEnd = otherStart + other.duration;
+      
+      return (meetingStart < otherEnd && meetingEnd > otherStart);
+    });
+  };
+
   const generateRecurringMeetings = (baseMeeting) => {
     const meetings = [baseMeeting];
     
@@ -324,14 +241,6 @@ export default function Calendar() {
     return meetings;
   };
 
-  const generateMeetingRoomName = (meeting) => {
-    // Create consistent room name based on meeting data
-    const projectId = meeting.projectId || 1;
-    const dateStr = meeting.date.replace(/-/g, '');
-    const timeStr = meeting.time.replace(':', '');
-    return `project-${projectId}-${dateStr}-${timeStr}`;
-  };
-
   const createMeeting = async () => {
     if (!newMeeting) return;
 
@@ -349,7 +258,7 @@ export default function Calendar() {
     }
 
     const baseMeetingData = {
-      projectId: 1, // Required field for database
+      projectId: 1,
       title: newMeeting.title,
       date: newMeeting.date,
       time: newMeeting.time,
@@ -357,18 +266,12 @@ export default function Calendar() {
       purpose: newMeeting.description || 'Calendar meeting',
       location: 'Online (Jitsi Meet)',
       participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
-      hostId: JSON.parse(localStorage.getItem('user') || '{}')._id || 'demo_user',
+      hostId: currentUser?._id || 'demo_user',
       reminder: newMeeting.reminder,
-      repeat: newMeeting.repeat,
-      roomName: generateMeetingRoomName({
-        projectId: 1,
-        date: newMeeting.date,
-        time: newMeeting.time
-      })
+      repeat: newMeeting.repeat
     };
 
     try {
-      console.log('🔄 Creating meeting:', baseMeetingData);
       const response = await fetch('/api/meetings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -376,19 +279,12 @@ export default function Calendar() {
       });
       
       if (response.ok) {
-        const savedMeeting = await response.json();
-        console.log('✅ Meeting saved to database:', savedMeeting);
-        fetchMeetings(); // Refresh meetings from database
+        fetchMeetings();
       } else {
-        const errorData = await response.json();
-        console.error('❌ Failed to save meeting:', errorData);
-        // Add locally as fallback
         const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
         setMeetings([...meetings, ...allMeetings]);
       }
     } catch (error) {
-      console.error('❌ Error saving meeting:', error);
-      // Add locally as fallback
       const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
       setMeetings([...meetings, ...allMeetings]);
     }
@@ -398,47 +294,45 @@ export default function Calendar() {
   };
 
   const forceCreateMeeting = async () => {
-    const newMeetingData = {
-      _id: 'demo' + Date.now(),
+    const baseMeetingData = {
+      projectId: 1,
       title: overlapWarning.newMeeting.title,
       date: overlapWarning.newMeeting.date,
       time: overlapWarning.newMeeting.time,
       duration: overlapWarning.newMeeting.duration,
       purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
       location: 'Online (Jitsi Meet)',
-      participants: overlapWarning.newMeeting.participants ? overlapWarning.newMeeting.participants.split(',').map(p => p.trim()) : [],
-      reminder: overlapWarning.newMeeting.reminder,
-      repeat: overlapWarning.newMeeting.repeat
+      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
+      hostId: currentUser?._id || 'demo_user'
     };
 
-    setMeetings([...meetings, newMeetingData]);
+    const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+    setMeetings([...meetings, newMeetingLocal]);
     setOverlapWarning(null);
     setIsCreatingMeeting(false);
     setNewMeeting(null);
-    console.log('✅ Meeting created despite overlap');
   };
 
   const useNextSlot = async () => {
     if (!overlapWarning.nextSlot) return;
     
-    const newMeetingData = {
-      _id: 'demo' + Date.now(),
+    const baseMeetingData = {
+      projectId: 1,
       title: overlapWarning.newMeeting.title,
       date: overlapWarning.newMeeting.date,
       time: overlapWarning.nextSlot,
       duration: overlapWarning.newMeeting.duration,
       purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
       location: 'Online (Jitsi Meet)',
-      participants: overlapWarning.newMeeting.participants ? overlapWarning.newMeeting.participants.split(',').map(p => p.trim()) : [],
-      reminder: overlapWarning.newMeeting.reminder,
-      repeat: overlapWarning.newMeeting.repeat
+      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
+      hostId: currentUser?._id || 'demo_user'
     };
 
-    setMeetings([...meetings, newMeetingData]);
+    const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+    setMeetings([...meetings, newMeetingLocal]);
     setOverlapWarning(null);
     setIsCreatingMeeting(false);
     setNewMeeting(null);
-    console.log('✅ Meeting created with suggested slot');
   };
 
   const deleteMeeting = async (meetingId) => {
@@ -461,20 +355,6 @@ export default function Calendar() {
     
     setSelectedMeeting(null);
     console.log('🗑️ Meeting deleted');
-  };
-
-  const hasOverlap = (meeting) => {
-    const meetingStart = timeToMinutes(meeting.time);
-    const meetingEnd = meetingStart + meeting.duration;
-    
-    return meetings.some(other => {
-      if (other._id === meeting._id || other.date !== meeting.date) return false;
-      
-      const otherStart = timeToMinutes(other.time);
-      const otherEnd = otherStart + other.duration;
-      
-      return (meetingStart < otherEnd && meetingEnd > otherStart);
-    });
   };
 
   const getMeetingColor = (meeting) => {
@@ -520,8 +400,8 @@ export default function Calendar() {
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          <Link href="/clientdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
-          <Link href="/clientdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
+          <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <div style={{ position: 'relative' }} className="profile-dropdown">
             <button
               onClick={() => {
@@ -594,7 +474,7 @@ export default function Calendar() {
 
       <div style={{ padding: '20px' }}>
         <button 
-          onClick={() => router.push('/clientdashboard/projects/view')}
+          onClick={() => router.push('/projectmanagerdashboard/projects/view')}
           style={{ marginBottom: '20px', padding: '8px 16px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
           ← Back to Project
@@ -638,11 +518,11 @@ export default function Calendar() {
                   padding: '5px',
                   border: '1px solid #eee',
                   position: 'relative',
-                  cursor: (date && (currentUser?.role === 'project manager' || currentUser?.role === 'project_manager')) ? 'pointer' : 'default'
+                  cursor: date ? 'pointer' : 'default'
                 }}
-                onDragOver={(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? handleDragOver : undefined}
-                onDrop={(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? (e) => handleDrop(e, date) : undefined}
-                onClick={(e) => date && (currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') && handleCellClick(date, e)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, date)}
+                onClick={(e) => date && handleCellClick(date, e)}
               >
                 {date && (
                   <>
@@ -652,14 +532,8 @@ export default function Calendar() {
                     {getMeetingsForDate(date).map(meeting => (
                       <div
                         key={meeting._id}
-                        draggable={currentUser?.role === 'project manager' || currentUser?.role === 'project_manager'}
-                        onDragStart={(e) => {
-                          console.log('🔥 Drag start - User role:', currentUser?.role);
-                          console.log('🔥 Can drag?', currentUser?.role === 'project manager' || currentUser?.role === 'project_manager');
-                          if (currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') {
-                            handleDragStart(e, meeting);
-                          }
-                        }}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, meeting)}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedMeeting(meeting);
@@ -669,13 +543,8 @@ export default function Calendar() {
                           setTooltipPosition({ x: e.clientX, y: e.clientY });
                         }}
                         onMouseLeave={() => setHoveredMeeting(null)}
-                        onMouseMove={(e) => {
-                          if (hoveredMeeting?._id === meeting._id) {
-                            setTooltipPosition({ x: e.clientX, y: e.clientY });
-                          }
-                        }}
                         style={{
-                          background: getMeetingColor(meeting),
+                          background: hasOverlap(meeting) ? '#dc3545' : getMeetingColor(meeting),
                           color: 'white',
                           padding: '2px 5px',
                           marginBottom: '2px',
@@ -683,16 +552,12 @@ export default function Calendar() {
                           fontSize: '11px',
                           cursor: 'pointer',
                           opacity: draggedMeeting?._id === meeting._id ? 0.5 : 1,
-                          border: hasOverlap(meeting) ? '3px solid #ff0000' : '1px solid transparent',
-                          boxShadow: hasOverlap(meeting) ? '0 0 15px rgba(220, 53, 69, 0.8), inset 0 0 10px rgba(255,255,255,0.3)' : 'none',
-                          background: hasOverlap(meeting) ? '#dc3545' : getMeetingColor(meeting),
-                          transform: hasOverlap(meeting) ? 'scale(1.02)' : 'scale(1)',
-                          transition: 'all 0.3s ease',
+                          border: hasOverlap(meeting) ? '2px solid #ff0000' : '1px solid transparent',
+                          boxShadow: hasOverlap(meeting) ? '0 0 10px rgba(220, 53, 69, 0.8)' : 'none',
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          position: 'relative',
-                          animation: hasOverlap(meeting) ? 'pulse 1s infinite' : 'none'
+                          position: 'relative'
                         }}
                       >
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -700,53 +565,6 @@ export default function Calendar() {
                         </span>
                         {hasOverlap(meeting) && (
                           <span style={{ fontSize: '10px', marginRight: '4px' }}>⚠️</span>
-                        )}
-                        {(meeting.participants && meeting.participants.includes(currentUser?.id)) && (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              const roomName = meeting.roomName || generateMeetingRoomName(meeting);
-                              
-                              try {
-                                const statusResponse = await fetch('/api/meeting-status', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    roomName,
-                                    userId: currentUser?.id || currentUser?._id,
-                                    action: 'join'
-                                  })
-                                });
-                                
-                                const statusData = await statusResponse.json();
-                                
-                                if (statusData.canJoin) {
-                                  const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
-                                  console.log('🎆 Joining meeting:', meetingUrl);
-                                  window.open(meetingUrl, '_blank');
-                                } else {
-                                  alert(statusData.message || 'Cannot join meeting yet');
-                                }
-                              } catch (error) {
-                                console.error('Error checking meeting status:', error);
-                                // Fallback to direct join
-                                const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
-                                window.open(meetingUrl, '_blank');
-                              }
-                            }}
-                            style={{
-                              background: 'rgba(255,255,255,0.3)',
-                              border: 'none',
-                              color: 'white',
-                              padding: '2px 4px',
-                              borderRadius: '2px',
-                              fontSize: '9px',
-                              cursor: 'pointer',
-                              marginLeft: '4px'
-                            }}
-                          >
-                            Join
-                          </button>
                         )}
                         <div
                           style={{
@@ -767,112 +585,43 @@ export default function Calendar() {
                         />
                       </div>
                     ))}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: '5px',
-                        right: '5px',
-                        background: '#28a745',
-                        color: 'white',
-                        borderRadius: '50%',
-                        width: '20px',
-                        height: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}
-                    >
-                      +
-                    </div>
                   </>
                 )}
               </div>
             ))}
           </div>
-
-          {/* Debug Section */}
-          <div style={{ marginTop: '20px', padding: '15px', background: '#fff3cd', borderRadius: '5px', border: '1px solid #ffeaa7' }}>
-            <h4 style={{ margin: '0 0 15px 0', color: '#856404' }}>🔧 Debug Info:</h4>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-              <button
-                onClick={() => {
-                  console.log('🔄 Manual refresh triggered');
-                  fetchMeetings();
-                }}
-                style={{ padding: '5px 10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
-              >
-                🔄 Refresh Meetings
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/api/test-meetings');
-                    const result = await response.json();
-                    console.log('🧪 Test result:', result);
-                    alert(`Test: ${result.message} - Found ${result.count} meetings`);
-                    fetchMeetings();
-                  } catch (error) {
-                    console.error('Test error:', error);
-                    alert('Test failed - check console');
-                  }
-                }}
-                style={{ padding: '5px 10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
-              >
-                🧪 Test Database
-              </button>
-            </div>
-            <div style={{ fontSize: '13px', color: '#856404' }}>
-              <strong>Meetings loaded:</strong> {meetings.length} | 
-              <strong>API Status:</strong> {meetings.length > 0 ? '✅ Working' : '❌ No data'}
-            </div>
-            {meetings.length > 0 && (
-              <div style={{ marginTop: '10px', fontSize: '11px', background: '#f8f9fa', padding: '8px', borderRadius: '3px' }}>
-                <strong>All meetings:</strong><br/>
-                {meetings.map((m, i) => (
-                  <div key={i}>
-                    {i + 1}. {m.title} on {m.date} at {m.time} (Duration: {m.duration}min)
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
+          
           <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '5px' }}>
-            <h4 style={{ margin: '0 0 15px 0' }}>📋 Calendar Features Demo:</h4>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+            <h4 style={{ margin: '0 0 15px 0' }}>📋 Calendar Core Features:</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
-                <h5 style={{ margin: '0 0 8px 0', color: '#28a745' }}>📝 Advanced Calendar Features:</h5>
+                <h5 style={{ margin: '0 0 8px 0', color: '#28a745' }}>✨ Interactive Features:</h5>
                 <div style={{ fontSize: '14px' }}>
-                  {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? '✅' : '❌'} <strong>Smart Click:</strong> {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? 'Click position sets meeting time' : 'Only Project Managers can create meetings'}<br/>
-                  {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? '✅' : '❌'} <strong>Drag & Drop:</strong> {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? 'Move meetings between dates' : 'View-only access for your role'}<br/>
-                  {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? '✅' : '❌'} <strong>Resize Duration:</strong> {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? 'Drag bottom-right corner to resize' : 'View-only access for your role'}<br/>
-                  ✅ <strong>Color Coded:</strong> Each meeting has unique colors<br/>
-                  ✅ <strong>Conflict Detection:</strong> Red pulsing border for overlaps<br/>
-                  ✅ <strong>Smart Suggestions:</strong> Auto-suggest next free slots<br/>
-                  ✅ <strong>Local Timezone:</strong> All times in your timezone<br/>
-                  ✅ <strong>Recurring Options:</strong> Daily/Weekly/Monthly repeats
+                  ✅ <strong>Create meeting directly from calendar</strong><br/>
+                  ✅ <strong>Click & drag on calendar to set time</strong><br/>
+                  ✅ <strong>Adjust duration by dragging endpoints</strong><br/>
+                  ✅ <strong>Move meeting to another time (drag-drop)</strong><br/>
+                  ✅ <strong>Resize meeting block duration</strong><br/>
+                  ✅ <strong>Color-coded meetings</strong><br/>
+                  ✅ <strong>Show time in local timezone</strong><br/>
+                  ⚠️ <strong>Overlap/Clash Detection</strong><br/>
+                  💡 <strong>Suggest next available slot</strong><br/>
+                  📝 <strong>Meeting Scheduling (Inside Calendar)</strong><br/>
+                  👥 <strong>Add participants & reminders</strong><br/>
+                  🔄 <strong>Repeat options (daily/weekly/monthly)</strong><br/>
+                  🗑️ <strong>Delete meetings</strong> with confirmation
                 </div>
               </div>
-              
               <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
-                <h5 style={{ margin: '0 0 8px 0', color: '#007bff' }}>🕰️ Demo Meetings:</h5>
+                <h5 style={{ margin: '0 0 8px 0', color: '#007bff' }}>🎯 Project Manager Powers:</h5>
                 <div style={{ fontSize: '14px' }}>
-                  • <span style={{ background: '#ff6b6b', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>Today</span> E-commerce (9:00 AM)<br/>
-                  • <span style={{ background: '#4ecdc4', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>Tomorrow</span> Mobile App (2:30 PM)<br/>
-                  • <span style={{ background: '#45b7d1', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>+2 days</span> CRM System (11:00 AM)<br/>
-                  • <span style={{ background: '#96ceb4', color: 'white', padding: '2px 5px', borderRadius: '3px' }}>+3 days</span> Team Standup (10:00 AM)
-                </div>
-              </div>
-            </div>
-            
-            <div style={{ padding: '10px', background: '#e8f5e8', borderRadius: '5px', border: '1px solid #28a745' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '20px' }}>🎆</span>
-                <div>
-                  <strong>Try it now!</strong> {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') ? 'Click on any calendar date to create a meeting, or click "Join" on existing meetings to start Jitsi video calls!' : 'Click "Join" on meetings where you are a participant to start video calls!'}
+                  👑 <strong>Meeting Moderator</strong> - Join first<br/>
+                  📝 <strong>Create/Edit/Delete</strong> all meetings<br/>
+                  🎨 <strong>Full Calendar Control</strong><br/>
+                  👥 <strong>Manage Participants</strong><br/>
+                  📅 <strong>Schedule Recurring</strong> meetings<br/>
+                  ⚠️ <strong>Conflict Detection</strong><br/>
+                  🔄 <strong>Real-time Updates</strong>
                 </div>
               </div>
             </div>
@@ -905,25 +654,20 @@ export default function Calendar() {
               <strong>Title:</strong> {selectedMeeting.title}
             </div>
             <div style={{ marginBottom: '15px' }}>
-              <strong>Date:</strong> {selectedMeeting.date ? selectedMeeting.date.split('-').reverse().join('-') : selectedMeeting.date}
+              <strong>Date:</strong> {selectedMeeting.date} | <strong>Time:</strong> {selectedMeeting.time} | <strong>Duration:</strong> {selectedMeeting.duration} min
             </div>
             <div style={{ marginBottom: '15px' }}>
-              <strong>Time:</strong> {formatTime(selectedMeeting.time)}
+              <strong>Location:</strong> {selectedMeeting.location || 'Online (Jitsi Meet)'}
             </div>
-            <div style={{ marginBottom: '15px' }}>
-              <strong>Duration:</strong> {selectedMeeting.duration} minutes
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <strong>Location:</strong> {selectedMeeting.location}
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <strong>Purpose:</strong> {selectedMeeting.purpose}
-            </div>
+            {selectedMeeting.purpose && (
+              <div style={{ marginBottom: '15px' }}>
+                <strong>Purpose:</strong> {selectedMeeting.purpose}
+              </div>
+            )}
             {selectedMeeting.participants && selectedMeeting.participants.length > 0 && (
               <div style={{ marginBottom: '15px' }}>
                 <strong>Participants:</strong> {Array.isArray(selectedMeeting.participants) 
                   ? selectedMeeting.participants.map(p => {
-                      // If it's an object ID, find the username from team
                       if (typeof p === 'string' && p.length === 24) {
                         const user = team.find(u => u.id === p);
                         return user ? user.username || user.name : p;
@@ -940,57 +684,29 @@ export default function Calendar() {
               >
                 Close
               </button>
-              {(selectedMeeting.participants && selectedMeeting.participants.includes(currentUser?.id)) && (
-                <button
-                  onClick={async () => {
-                    const roomName = selectedMeeting.roomName || generateMeetingRoomName(selectedMeeting);
-                    
-                    try {
-                      const statusResponse = await fetch('/api/meeting-status', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          roomName,
-                          userId: currentUser?.id || currentUser?._id,
-                          action: 'join'
-                        })
-                      });
-                      
-                      const statusData = await statusResponse.json();
-                      
-                      if (statusData.canJoin) {
-                        const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
-                        console.log('🎆 Joining meeting from modal:', meetingUrl);
-                        window.open(meetingUrl, '_blank');
-                      } else {
-                        alert(statusData.message || 'Cannot join meeting yet');
-                      }
-                    } catch (error) {
-                      console.error('Error checking meeting status:', error);
-                      // Fallback to direct join
-                      const meetingUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
-                      window.open(meetingUrl, '_blank');
-                    }
-                  }}
-                  style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  🎥 Join Meeting
-                </button>
-              )}
-              {(currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') && (
-                <button
-                  onClick={() => deleteMeeting(selectedMeeting._id)}
-                  style={{ padding: '8px 16px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  🗑️ Delete Meeting
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  const projectName = selectedMeeting.title.replace(/\s+/g, '-').toLowerCase();
+                  const dateStr = selectedMeeting.date.split('-').reverse().join('-');
+                  const roomName = `${projectName}-${dateStr}`;
+                  window.open(`/meeting/${roomName}`, '_blank');
+                }}
+                style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                🚀 Join Meeting
+              </button>
+              <button
+                onClick={() => deleteMeeting(selectedMeeting._id)}
+                style={{ padding: '8px 16px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                🗑️ Delete Meeting
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {isCreatingMeeting && (currentUser?.role === 'project manager' || currentUser?.role === 'project_manager') && (
+      {isCreatingMeeting && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -1185,7 +901,6 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Enhanced Overlap Warning Modal */}
       {overlapWarning && (
         <div style={{
           position: 'fixed',
@@ -1327,40 +1042,19 @@ export default function Calendar() {
             zIndex: 1001,
             maxWidth: '280px',
             boxShadow: '0 8px 25px rgba(0,0,0,0.4)',
-            pointerEvents: 'none',
-            border: '1px solid rgba(255,255,255,0.2)'
+            pointerEvents: 'none'
           }}
         >
-          <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '14px', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '5px' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
             📅 {hoveredMeeting.title}
           </div>
-          <div style={{ marginBottom: '4px' }}>
-            🕰️ <strong>Time:</strong> {formatTime(hoveredMeeting.time)} ({hoveredMeeting.duration || 60} min)
-          </div>
-          <div style={{ marginBottom: '4px' }}>
-            📅 <strong>Date:</strong> {hoveredMeeting.date ? hoveredMeeting.date.split('-').reverse().join('-') : hoveredMeeting.date}
-          </div>
-          <div style={{ marginBottom: '4px' }}>
-            📍 <strong>Location:</strong> {hoveredMeeting.location || 'Online Meeting'}
-          </div>
-          {hoveredMeeting.purpose && (
-            <div style={{ marginBottom: '4px' }}>
-              📝 <strong>Purpose:</strong> {hoveredMeeting.purpose}
-            </div>
-          )}
-          {hoveredMeeting.participants && hoveredMeeting.participants.length > 0 && (
-            <div style={{ marginBottom: '4px' }}>
-              👥 <strong>Participants:</strong> {hoveredMeeting.participants.length} people
-            </div>
-          )}
+          <div>🕰️ {formatTime(hoveredMeeting.time)} ({hoveredMeeting.duration || 60} min)</div>
+          <div>📅 {hoveredMeeting.date}</div>
           {hasOverlap(hoveredMeeting) && (
             <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginTop: '8px', padding: '4px', background: 'rgba(255,107,107,0.2)', borderRadius: '4px' }}>
               ⚠️ CONFLICT: Overlaps with another meeting!
             </div>
           )}
-          <div style={{ marginTop: '8px', fontSize: '11px', opacity: '0.8', fontStyle: 'italic' }}>
-            Click to view details • Drag to move
-          </div>
         </div>
       )}
     </div>

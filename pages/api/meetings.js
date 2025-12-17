@@ -34,14 +34,32 @@ export default async function handler(req, res) {
       console.log('🔥 REAL DB MEETINGS COUNT:', meetings.length);
       console.log('🔥 FIRST MEETING SAMPLE:', meetings[0]);
       
-      // Convert MongoDB _id to string and ensure proper format
-      const formattedMeetings = meetings.map(meeting => ({
-        ...meeting,
-        _id: meeting._id.toString(),
-        duration: parseInt(meeting.duration) || 60
-      }));
+      // Convert MongoDB _id to string and handle both old and new format
+      const formattedMeetings = meetings.map(meeting => {
+        let date, time;
+        
+        if (meeting.timestamp) {
+          // New format: convert timestamp to date/time
+          const meetingDate = new Date(meeting.timestamp);
+          date = meetingDate.toISOString().split('T')[0];
+          time = meetingDate.toTimeString().slice(0, 5);
+        } else {
+          // Old format: use existing date/time fields
+          date = meeting.date;
+          time = meeting.time;
+        }
+        
+        return {
+          ...meeting,
+          _id: meeting._id.toString(),
+          date,
+          time,
+          duration: parseInt(meeting.duration) || 60
+        };
+      });
       
       console.log('🔥 FORMATTED MEETINGS:', formattedMeetings.length);
+      console.log('🔥 SAMPLE FORMATTED MEETING:', formattedMeetings[0]);
       res.status(200).json(formattedMeetings);
     } catch (error) {
       console.error('❌ Database error in GET:', error);
@@ -53,32 +71,51 @@ export default async function handler(req, res) {
       
       await dbConnect();
       
+      // Convert date and time to timestamp
+      const meetingDateTime = new Date(`${req.body.date}T${req.body.time}:00`);
+      const timestamp = meetingDateTime.getTime();
+      
+      // Generate consistent room name using project name and date format
+      const projectName = req.body.title.replace(/\s+/g, '-').toLowerCase();
+      const dateStr = req.body.date.split('-').reverse().join('-'); // Convert to dd-mm-yyyy
+      const roomName = `${projectName}-${dateStr}`;
+      
       const newMeeting = new Meeting({
         projectId: req.body.projectId,
         title: req.body.title,
-        date: req.body.date,
-        time: req.body.time,
+        timestamp: timestamp,
         duration: req.body.duration || '30',
         purpose: req.body.purpose || '',
         location: req.body.location || 'Online Meet',
         participants: req.body.participants,
         hostId: req.body.hostId || 'demo_user',
-        roomName: `project_${req.body.projectId}_${Date.now()}`
+        roomName: roomName
       });
       
       const savedMeeting = await newMeeting.save();
       console.log('🔥 Meeting saved to database:', savedMeeting._id);
       
-      res.status(201).json(savedMeeting);
+      // Convert timestamp back to date/time for response
+      const responseDate = new Date(savedMeeting.timestamp);
+      const responseMeeting = {
+        ...savedMeeting.toObject(),
+        date: responseDate.toISOString().split('T')[0],
+        time: responseDate.toTimeString().slice(0, 5)
+      };
+      
+      res.status(201).json(responseMeeting);
     } catch (error) {
       console.error('Database error in POST:', error);
+      // Convert date and time to timestamp for mock meeting
+      const mockDateTime = new Date(`${req.body.date}T${req.body.time}:00`);
+      const mockTimestamp = mockDateTime.getTime();
+      
       // Return success even if DB fails
       const mockMeeting = {
         _id: 'demo' + Date.now(),
         projectId: req.body.projectId,
         title: req.body.title,
-        date: req.body.date,
-        time: req.body.time,
+        timestamp: mockTimestamp,
         duration: req.body.duration || '30',
         purpose: req.body.purpose || '',
         location: req.body.location || 'Online Meet',

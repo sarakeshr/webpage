@@ -5,32 +5,65 @@ import Link from 'next/link';
 export default function JitsiMeeting() {
   const [project, setProject] = useState(null);
   const [meetingLink, setMeetingLink] = useState('');
+  const [meetingTitle, setMeetingTitle] = useState('');
   const [meetingDate, setMeetingDate] = useState('');
   const [meetingTime, setMeetingTime] = useState('');
   const [participants, setParticipants] = useState([]);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/projects`)
-        .then(res => res.json())
-        .then(projects => {
+    const fetchData = async () => {
+      try {
+        // Get user from localStorage
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        setCurrentUser(user);
+        
+        const projectId = localStorage.getItem('selectedProjectId');
+        if (projectId) {
+          // Mock project data
+          const projects = [
+            { id: 1, name: 'E-commerce website development', description: 'Complete online shopping platform with payment integration', status: 'In Progress', deadline: '2024-12-15' },
+            { id: 2, name: 'Mobile app for food delivery', description: 'iOS and Android app for restaurant food ordering', status: 'Planning', deadline: '2024-11-30' },
+            { id: 3, name: 'CRM system integration', description: 'Customer relationship management system setup', status: 'Testing', deadline: '2024-12-01' }
+          ];
           const selectedProject = projects.find(p => p.id === parseInt(projectId));
           setProject(selectedProject);
-          generateMeetingLink(projectId);
-        });
-    }
+          
+          // Don't generate meeting link here - it will be generated when user enters title and date
+        }
 
-    fetch('/api/team')
-      .then(res => res.json())
-      .then(data => setParticipants(data));
+        // Fetch team data
+        try {
+          const teamRes = await fetch('/api/team');
+          if (teamRes.ok) {
+            const data = await teamRes.json();
+            setParticipants(data);
+          }
+        } catch (error) {
+          console.error('Error fetching team:', error);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
   }, []);
 
-  const generateMeetingLink = (projectId) => {
-    const meetingId = `priam-project-${projectId}-${Date.now()}`;
-    setMeetingLink(`https://meet.jit.si/${meetingId}`);
+  const generateMeetingLink = (title, date) => {
+    if (title && date) {
+      const titleSlug = title.replace(/\s+/g, '-').toLowerCase();
+      const dateStr = date.split('-').reverse().join('-'); // Convert yyyy-mm-dd to dd-mm-yyyy
+      const roomName = `${titleSlug}-${dateStr}`;
+      setMeetingLink(`/meeting/${roomName}`);
+    } else {
+      setMeetingLink('');
+    }
   };
 
   const joinMeeting = () => {
@@ -45,14 +78,14 @@ export default function JitsiMeeting() {
 
 
   const scheduleMeeting = async () => {
-    if (!meetingDate || !meetingTime || selectedParticipants.length === 0) {
+    if (!meetingTitle || !meetingDate || !meetingTime || selectedParticipants.length === 0) {
       alert('Please fill all fields and select participants');
       return;
     }
 
     const meetingData = {
       projectId: project.id,
-      title: `${project.name} Meeting`,
+      title: meetingTitle,
       date: meetingDate,
       time: meetingTime,
       participants: selectedParticipants
@@ -72,9 +105,11 @@ export default function JitsiMeeting() {
 
       if (response.ok) {
         alert('Meeting scheduled successfully!');
+        setMeetingTitle('');
         setMeetingDate('');
         setMeetingTime('');
         setSelectedParticipants([]);
+        setMeetingLink('');
         router.push('/project_manager/view');
       } else {
         alert('Failed to schedule meeting: ' + (result.error || 'Unknown error'));
@@ -90,14 +125,18 @@ export default function JitsiMeeting() {
     router.push('/');
   };
 
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
+  }
+
   if (!project) {
-    return <div style={{ padding: '20px' }}>Loading...</div>;
+    return <div style={{ padding: '20px' }}>Project not found.</div>;
   }
 
   return (
     <div>
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>Project Manager Dashboard</h1>
+        <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
         <div style={{ display: 'flex', gap: '20px' }}>
           <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
@@ -110,13 +149,29 @@ export default function JitsiMeeting() {
           
           <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>Meeting Details</h3>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Meeting Title:</label>
+              <input
+                type="text"
+                placeholder="Enter meeting title (e.g., Project 1)"
+                value={meetingTitle}
+                onChange={(e) => {
+                  setMeetingTitle(e.target.value);
+                  generateMeetingLink(e.target.value, meetingDate);
+                }}
+                style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Date:</label>
                 <input
                   type="date"
                   value={meetingDate}
-                  onChange={(e) => setMeetingDate(e.target.value)}
+                  onChange={(e) => {
+                    setMeetingDate(e.target.value);
+                    generateMeetingLink(meetingTitle, e.target.value);
+                  }}
                   style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
                 />
               </div>

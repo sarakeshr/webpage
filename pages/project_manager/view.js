@@ -2,48 +2,54 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 
-export default function ViewProject() {
-  const [project, setProject] = useState(null);
+export default function ProjectManagerView() {
   const [meetings, setMeetings] = useState([]);
-
+  const [currentUser, setCurrentUser] = useState(null);
   const [team, setTeam] = useState([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const fetchMeetings = () => {
-    const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/meetings?projectId=${projectId}`)
-        .then(res => res.json())
-        .then(data => {
-          console.log('Fetched meetings:', data);
-          setMeetings(data);
-        });
+  const fetchMeetings = async () => {
+    try {
+      const meetingsRes = await fetch('/api/meetings');
+      if (meetingsRes.ok) {
+        const allMeetings = await meetingsRes.json();
+        console.log('Fetched meetings:', allMeetings);
+        setMeetings(allMeetings);
+      }
+    } catch (error) {
+      console.error('Error fetching meetings:', error);
     }
-  };
-
-  const getParticipantNames = (participantIds) => {
-    return participantIds.map(id => {
-      const member = team.find(t => t.id === String(id)); // Convert both to strings for exact match
-      return member ? member.name : `User ${id}`;
-    }).join(', ');
   };
 
   useEffect(() => {
-    const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/projects`)
-        .then(res => res.json())
-        .then(projects => {
-          const selectedProject = projects.find(p => p.id === parseInt(projectId));
-          setProject(selectedProject);
-        });
-
-      fetch('/api/team')
-        .then(res => res.json())
-        .then(data => setTeam(data));
-
-      fetchMeetings();
-    }
+    const fetchData = async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        setCurrentUser(user);
+        
+        try {
+          const teamRes = await fetch('/api/team');
+          if (teamRes.ok) {
+            const teamData = await teamRes.json();
+            setTeam(teamData || []);
+          }
+        } catch (error) {
+          console.error('Error fetching team:', error);
+        }
+        
+        await fetchMeetings();
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+    
+    const interval = setInterval(fetchMeetings, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const logout = () => {
@@ -51,8 +57,8 @@ export default function ViewProject() {
     router.push('/');
   };
 
-  if (!project) {
-    return <div style={{ padding: '20px' }}>Loading project details...</div>;
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
   }
 
   return (
@@ -61,81 +67,57 @@ export default function ViewProject() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>Project Manager Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px' }}>
           <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
-          <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
+          <Link href="/project_manager/view" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Meetings</Link>
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
       </nav>
 
       <div style={{ padding: '20px' }}>
-        <button 
-          onClick={() => router.push('/projectmanagerdashboard/projects')}
-          style={{ marginBottom: '20px', padding: '8px 16px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          ← Back to Projects
-        </button>
-
-        <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.name}</h2>
-          <p style={{ color: '#666', marginBottom: '15px' }}>{project.description}</p>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-            <div>
-              <strong>Status: </strong>
-              <span style={{
-                padding: '4px 12px',
-                borderRadius: '20px',
-                fontSize: '14px',
-                background: project.status === 'Completed' ? '#d4edda' : project.status === 'In Progress' ? '#cce5ff' : project.status === 'Testing' ? '#fff3cd' : '#e9ecef',
-                color: project.status === 'Completed' ? '#155724' : project.status === 'In Progress' ? '#004085' : project.status === 'Testing' ? '#856404' : '#495057'
-              }}>
-                {project.status}
-              </span>
-            </div>
-            <div>
-              <strong>{project.status === 'Completed' ? 'Completed: ' : 'Deadline: '}</strong>
-              <span>{project.completedDate || project.deadline}</span>
-            </div>
-          </div>
-        </div>
-
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0, fontSize: '20px' }}>Upcoming Meetings</h3>
-            <button 
-              onClick={fetchMeetings}
-              style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-            >
-              🔄 Refresh
-            </button>
-          </div>
+          <h3 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>📅 All Meetings</h3>
           {meetings.length > 0 ? (
             <div>
-              {meetings.map(meeting => (
-                <div key={meeting._id || meeting.id} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '8px', paddingBottom: '8px', marginBottom: '10px', background: '#f8f9fa' }}>
-                  <div style={{ fontWeight: 'bold', color: '#333' }}>{meeting.title}</div>
-                  <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
-                    <strong>Date:</strong> {meeting.date} | <strong>Time:</strong> {meeting.time}
+              {meetings.map((meeting, index) => (
+                <div key={meeting._id || meeting.id || index} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '12px', paddingBottom: '12px', marginBottom: '15px', background: '#f8f9fa', borderRadius: '4px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px', marginBottom: '8px' }}>{meeting.title}</div>
+                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
+                    <strong>Date:</strong> {meeting.date} | <strong>Time:</strong> {meeting.time} | <strong>Duration:</strong> {meeting.duration || 60} min
                   </div>
-                  <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
-                    <strong>Participants:</strong> {getParticipantNames(meeting.participants || [])}
+                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
+                    <strong>Location:</strong> {meeting.location || 'Online (Jitsi Meet)'}
                   </div>
+                  {meeting.purpose && (
+                    <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
+                      <strong>Purpose:</strong> {meeting.purpose}
+                    </div>
+                  )}
+                  {meeting.participants && meeting.participants.length > 0 && (
+                    <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+                      <strong>Participants:</strong> {Array.isArray(meeting.participants) 
+                        ? meeting.participants.map(p => {
+                            if (typeof p === 'string' && p.length === 24) {
+                              const user = team.find(u => u.id === p);
+                              return user ? user.username || user.name : p;
+                            }
+                            return p;
+                          }).join(', ')
+                        : meeting.participants}
+                    </div>
+                  )}
                   <button 
                     onClick={() => {
-                      // Generate consistent meeting link based on meeting details
-                      const meetingId = meeting._id || meeting.id || 'default';
-                      const meetingRoom = meeting.meetingLink || `https://meet.jit.si/priam-${project.name.replace(/\s+/g, '-').toLowerCase()}-${meetingId}`;
-                      console.log('Opening meeting room:', meetingRoom);
-                      window.open(meetingRoom, '_blank');
+                      const roomName = meeting.roomName || `${meeting.title.replace(/\s+/g, '-').toLowerCase()}-${meeting.date ? meeting.date.split('-').reverse().join('-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}`;
+                      window.open(`/meeting/${roomName}`, '_blank');
                     }}
                     style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                   >
-                    🚀 Join Meeting
+                    🚀 Join Jitsi Meeting
                   </button>
                 </div>
               ))}
             </div>
           ) : (
-            <p style={{ color: '#666' }}>No upcoming meetings scheduled.</p>
+            <p style={{ color: '#666' }}>No meetings scheduled.</p>
           )}
         </div>
       </div>
