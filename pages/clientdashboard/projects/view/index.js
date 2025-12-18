@@ -63,78 +63,23 @@ export default function ViewProject() {
   useEffect(() => {
     const projectId = localStorage.getItem('selectedProjectId');
     
-    // Project mapping based on ID
-    const getProjectById = (id) => {
-      const projectMap = {
-        '1': {
-          id: '1',
-          name: 'E-commerce Website Development',
-          description: 'Online shopping platform development project.',
-          status: 'In Progress',
-          deadline: new Date().toISOString().split('T')[0]
-        },
-        '2': {
-          id: '2',
-          name: 'Mobile App for Food Delivery',
-          description: 'Food delivery mobile application development.',
-          status: 'Planning',
-          deadline: new Date().toISOString().split('T')[0]
-        },
-        '3': {
-          id: '3',
-          name: 'CRM System Integration',
-          description: 'Customer relationship management system integration.',
-          status: 'Testing',
-          deadline: new Date().toISOString().split('T')[0]
-        },
-        '4': {
-          id: '4',
-          name: 'Mobile App for Food Delivery',
-          description: 'Food delivery mobile application development.',
-          status: 'In Progress',
-          deadline: new Date().toISOString().split('T')[0]
-        },
-        '5': {
-          id: '5',
-          name: 'CRM System Integration',
-          description: 'Customer relationship management system integration.',
-          status: 'Planning',
-          deadline: new Date().toISOString().split('T')[0]
-        }
-      };
-      
-      console.log('Getting project for ID:', id);
-      const project = projectMap[id] || {
-        id: id,
-        name: `Project ${id}`,
-        description: 'Project information will be loaded here.',
-        status: 'In Progress',
-        deadline: new Date().toISOString().split('T')[0]
-      };
-      console.log('Returning project:', project);
-      return project;
-    };
+
     
     if (projectId) {
-      fetch(`/api/projects`)
-        .then(res => res.json())
-        .then(projects => {
-          console.log('Available projects:', projects);
-          console.log('Looking for project ID:', projectId);
-          // Try to find by string ID first, then by integer ID
-          const selectedProject = projects.find(p => p.id === projectId || p.id === parseInt(projectId));
-          if (selectedProject) {
-            setProject(selectedProject);
-          } else {
-            // Use mapped project based on ID
-            setProject(getProjectById(projectId));
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching projects:', error);
-          // Use mapped project based on ID
-          setProject(getProjectById(projectId));
-        });
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (user._id && user.role) {
+        fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`)
+          .then(res => res.json())
+          .then(projects => {
+            const selectedProject = projects.find(p => p._id === projectId || p.id === projectId);
+            if (selectedProject) {
+              setProject(selectedProject);
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching projects:', error);
+          });
+      }
 
       fetch('/api/team')
         .then(res => res.json())
@@ -145,9 +90,6 @@ export default function ViewProject() {
         });
 
       fetchMeetings();
-    } else {
-      // No project ID, set a default
-      setProject(getProjectById('1'));
     }
   }, []);
 
@@ -248,7 +190,7 @@ export default function ViewProject() {
         </button>
 
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.name}</h2>
+          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.title || project.name}</h2>
           <p style={{ color: '#666', marginBottom: '15px' }}>{project.description}</p>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
@@ -277,12 +219,14 @@ export default function ViewProject() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0, fontSize: '20px' }}>Upcoming Meetings</h3>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                onClick={() => router.push('/clientdashboard/projects/meeting')}
-                style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-              >
-                📅 Schedule Meeting
-              </button>
+              {(currentUser?.role === 'admin' || currentUser?.role === 'project_manager') && (
+                <button 
+                  onClick={() => router.push('/clientdashboard/projects/meeting')}
+                  style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                >
+                  📅 Schedule Meeting
+                </button>
+              )}
               <button 
                 onClick={fetchMeetings}
                 style={{ padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}

@@ -67,6 +67,13 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'POST') {
     try {
+      const { creatorRole } = req.body;
+      
+      // Check permissions - only admin and project_manager can create meetings
+      if (creatorRole !== 'admin' && creatorRole !== 'project_manager') {
+        return res.status(403).json({ error: 'Insufficient permissions to create meetings' });
+      }
+      
       const team = await getTeamData();
       
       await dbConnect();

@@ -55,11 +55,12 @@ export default function DirectorViewProject() {
 
   useEffect(() => {
     const projectId = localStorage.getItem('selectedProjectId');
-    if (projectId) {
-      fetch(`/api/projects`)
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (projectId && user._id) {
+      fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`)
         .then(res => res.json())
         .then(projects => {
-          const selectedProject = projects.find(p => p.id === parseInt(projectId));
+          const selectedProject = projects.find(p => p._id === projectId);
           setProject(selectedProject);
         });
 
@@ -100,7 +101,7 @@ export default function DirectorViewProject() {
         </button>
 
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.name}</h2>
+          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.title}</h2>
           <p style={{ color: '#666', marginBottom: '15px' }}>{project.description}</p>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>

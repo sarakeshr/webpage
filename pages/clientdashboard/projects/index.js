@@ -6,6 +6,7 @@ import NotificationBell from '../../../components/NotificationBell';
 export default function ClientProjects() {
   const [showProfile, setShowProfile] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [projects, setProjects] = useState([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -21,52 +22,20 @@ export default function ClientProjects() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProfile]);
 
-  const fetchCurrentUser = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.warn('No token found');
-        return;
-      }
-
-      const response = await fetch('/api/user/profile', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        console.log('👤 Real user data loaded:', userData);
-        setCurrentUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        // Fallback to localStorage if API fails
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        setCurrentUser(user);
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      // Fallback to localStorage
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      setCurrentUser(user);
-    }
+  const fetchCurrentUser = () => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setCurrentUser(user);
   };
 
-  const allProjects = [
-    { id: 1, name: 'E-commerce website development', description: 'Complete online shopping platform with payment integration', status: 'In Progress', deadline: '2024-12-15' },
-    { id: 2, name: 'Mobile app for food delivery', description: 'iOS and Android app for restaurant food ordering', status: 'Planning', deadline: '2024-11-30' },
-    { id: 3, name: 'CRM system integration', description: 'Customer relationship management system setup', status: 'Testing', deadline: '2024-12-01' },
-    { id: 4, name: 'Data analytics dashboard', description: 'Business intelligence and reporting dashboard', status: 'Completed', completedDate: '2024-07-01' },
-    { id: 5, name: 'Social media platform', description: 'Community-based social networking application', status: 'In Progress', deadline: '2025-01-15' },
-    { id: 6, name: 'Inventory management system', description: 'Warehouse and stock management solution', status: 'Completed', completedDate: '2024-07-03' },
-    { id: 7, name: 'Customer support portal', description: 'Help desk and ticket management system', status: 'Completed', completedDate: '2024-06-15' }
-  ];
-
-  const projects = [
-    ...allProjects.filter(p => p.status !== 'Completed'),
-    ...allProjects.filter(p => p.status === 'Completed').sort((a, b) => new Date(a.completedDate) - new Date(b.completedDate))
-  ];
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user._id && user.role) {
+      fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`)
+        .then(res => res.json())
+        .then(data => setProjects(data))
+        .catch(error => console.error('Error fetching projects:', error));
+    }
+  }, []);
 
   const logout = () => {
     localStorage.removeItem('token');
@@ -146,14 +115,14 @@ export default function ClientProjects() {
       <div style={{ padding: '20px' }}>
         <h2>Projects</h2>
         <div>
-          {projects.map(project => (
-            <div key={project.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid #ddd', marginBottom: '10px', borderRadius: '4px' }}>
-              <h3 style={{ margin: 0 }}>{project.name}</h3>
+          {projects.length > 0 ? projects.map(project => (
+            <div key={project._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', border: '1px solid #ddd', marginBottom: '10px', borderRadius: '4px' }}>
+              <h3 style={{ margin: 0 }}>{project.title}</h3>
               <div style={{ display: 'flex', gap: '10px' }}>
                 {project.status !== 'Completed' && (
                   <button 
                     onClick={() => {
-                      localStorage.setItem('selectedProjectId', project.id);
+                      localStorage.setItem('selectedProjectId', project._id);
                       router.push('/clientdashboard/projects/calendar');
                     }}
                     style={{ background: '#17a2b8', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
@@ -161,10 +130,10 @@ export default function ClientProjects() {
                     📅 Calendar
                   </button>
                 )}
-                {project.status !== 'Completed' && (
+                {project.status !== 'Completed' && (currentUser?.role === 'admin' || currentUser?.role === 'project_manager') && (
                   <button 
                     onClick={() => {
-                      localStorage.setItem('selectedProjectId', project.id);
+                      localStorage.setItem('selectedProjectId', project._id);
                       router.push('/clientdashboard/projects/meeting');
                     }}
                     style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
@@ -174,7 +143,7 @@ export default function ClientProjects() {
                 )}
                 <button 
                   onClick={() => {
-                    localStorage.setItem('selectedProjectId', project.id);
+                    localStorage.setItem('selectedProjectId', project._id);
                     router.push('/clientdashboard/projects/view');
                   }}
                   style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
@@ -183,7 +152,7 @@ export default function ClientProjects() {
                 </button>
               </div>
             </div>
-          ))}
+          )) : <p>No projects available</p>}
         </div>
       </div>
     </div>

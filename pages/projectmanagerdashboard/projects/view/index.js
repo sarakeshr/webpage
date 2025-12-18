@@ -34,14 +34,21 @@ export default function ProjectManagerViewProject() {
         
         const projectId = localStorage.getItem('selectedProjectId');
         if (projectId) {
-          // Mock project data
-          const projects = [
-            { id: 1, name: 'E-commerce website development', description: 'Complete online shopping platform with payment integration', status: 'In Progress', deadline: '2024-12-15' },
-            { id: 2, name: 'Mobile app for food delivery', description: 'iOS and Android app for restaurant food ordering', status: 'Planning', deadline: '2024-11-30' },
-            { id: 3, name: 'CRM system integration', description: 'Customer relationship management system setup', status: 'Testing', deadline: '2024-12-01' }
-          ];
-          const selectedProject = projects.find(p => p.id === parseInt(projectId));
-          setProject(selectedProject);
+          // Fetch project from API
+          const user = JSON.parse(localStorage.getItem('user') || '{}');
+          if (user._id && user.role) {
+            fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`)
+              .then(res => res.json())
+              .then(projects => {
+                const selectedProject = projects.find(p => p._id === projectId || p.id === projectId);
+                if (selectedProject) {
+                  setProject(selectedProject);
+                }
+              })
+              .catch(error => {
+                console.error('Error fetching projects:', error);
+              });
+          }
           
           // Fetch team data
           try {
@@ -115,7 +122,7 @@ export default function ProjectManagerViewProject() {
         </button>
 
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.name}</h2>
+          <h2 style={{ margin: '0 0 15px 0', fontSize: '28px', color: '#333' }}>{project.title || project.name}</h2>
           <p style={{ color: '#666', marginBottom: '15px' }}>{project.description}</p>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>

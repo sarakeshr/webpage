@@ -17,6 +17,8 @@ export default async function handler(req, res) {
         email: user.email
       }));
       
+      console.log('Team API - Returning team members:', teamMembers.map(tm => ({ id: tm.id, name: tm.name, role: tm.role })));
+      
       res.status(200).json(teamMembers);
     } catch (error) {
       console.error('Database error:', error);

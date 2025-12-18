@@ -75,7 +75,7 @@ export default function EditProject() {
       });
 
       if (response.ok) {
-        router.push('/admindashboard/projects');
+        router.push('/projectmanagerdashboard/projects');
       } else {
         alert('Failed to update project');
       }
@@ -116,17 +116,17 @@ export default function EditProject() {
   return (
     <div>
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>Admin Dashboard</h1>
+        <h1 style={{ margin: 0, fontSize: '24px' }}>Project Manager Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          <Link href="/admindashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
-          <NotificationBell userRole="admin" />
+          <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
+          <NotificationBell userRole="project_manager" />
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
       </nav>
 
       <div style={{ padding: '20px' }}>
         <div style={{ marginBottom: '20px' }}>
-          <Link href="/admindashboard/projects" style={{ color: '#007bff', textDecoration: 'none' }}>← Back to Projects</Link>
+          <Link href="/projectmanagerdashboard/projects" style={{ color: '#007bff', textDecoration: 'none' }}>← Back to Projects</Link>
         </div>
 
         <div style={{ background: 'white', padding: '30px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', maxWidth: '800px' }}>
@@ -244,7 +244,7 @@ export default function EditProject() {
               >
                 {loading ? 'Updating...' : 'Update Project'}
               </button>
-              <Link href="/admindashboard/projects" style={{ background: '#6c757d', color: 'white', padding: '12px 24px', textDecoration: 'none', borderRadius: '4px' }}>
+              <Link href="/projectmanagerdashboard/projects" style={{ background: '#6c757d', color: 'white', padding: '12px 24px', textDecoration: 'none', borderRadius: '4px' }}>
                 Cancel
               </Link>
             </div>

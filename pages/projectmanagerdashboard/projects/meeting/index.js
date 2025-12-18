@@ -22,28 +22,46 @@ export default function JitsiMeeting() {
         setCurrentUser(user);
         
         const projectId = localStorage.getItem('selectedProjectId');
-        if (projectId) {
-          // Mock project data
-          const projects = [
-            { id: 1, name: 'E-commerce website development', description: 'Complete online shopping platform with payment integration', status: 'In Progress', deadline: '2024-12-15' },
-            { id: 2, name: 'Mobile app for food delivery', description: 'iOS and Android app for restaurant food ordering', status: 'Planning', deadline: '2024-11-30' },
-            { id: 3, name: 'CRM system integration', description: 'Customer relationship management system setup', status: 'Testing', deadline: '2024-12-01' }
-          ];
-          const selectedProject = projects.find(p => p.id === parseInt(projectId));
-          setProject(selectedProject);
-          
-          // Don't generate meeting link here - it will be generated when user enters title and date
-        }
 
-        // Fetch team data
-        try {
-          const teamRes = await fetch('/api/team');
-          if (teamRes.ok) {
-            const data = await teamRes.json();
-            setParticipants(data);
+        // Fetch project team members
+        if (projectId && user._id && user.role) {
+          try {
+            const projectsRes = await fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`);
+            if (projectsRes.ok) {
+              const projects = await projectsRes.json();
+              const selectedProject = projects.find(p => p._id === projectId || p.id === projectId);
+              if (selectedProject) {
+                setProject(selectedProject);
+                
+                // Set participants to project team members + project manager
+                const projectParticipants = [];
+                
+                // Add project manager
+                if (selectedProject.projectManager) {
+                  projectParticipants.push({
+                    id: selectedProject.projectManager._id,
+                    name: selectedProject.projectManager.username,
+                    role: 'Project Manager'
+                  });
+                }
+                
+                // Add team members
+                if (selectedProject.teamMembers) {
+                  selectedProject.teamMembers.forEach(member => {
+                    projectParticipants.push({
+                      id: member._id,
+                      name: member.username,
+                      role: member.role
+                    });
+                  });
+                }
+                
+                setParticipants(projectParticipants);
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching project:', error);
           }
-        } catch (error) {
-          console.error('Error fetching team:', error);
         }
       } catch (error) {
         console.error('Error:', error);
@@ -84,11 +102,12 @@ export default function JitsiMeeting() {
     }
 
     const meetingData = {
-      projectId: project.id,
+      projectId: project._id || project.id,
       title: meetingTitle,
       date: meetingDate,
       time: meetingTime,
-      participants: selectedParticipants
+      participants: selectedParticipants,
+      creatorRole: currentUser?.role
     };
     
     console.log('Scheduling meeting with data:', meetingData);
@@ -110,7 +129,7 @@ export default function JitsiMeeting() {
         setMeetingTime('');
         setSelectedParticipants([]);
         setMeetingLink('');
-        router.push('/project_manager/view');
+        router.push('/projectmanagerdashboard/projects/view');
       } else {
         alert('Failed to schedule meeting: ' + (result.error || 'Unknown error'));
       }
@@ -145,7 +164,7 @@ export default function JitsiMeeting() {
 
       <div style={{ padding: '20px' }}>
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px', marginBottom: '20px' }}>
-          <h2 style={{ margin: '0 0 20px 0' }}>Schedule Meeting: {project.name}</h2>
+          <h2 style={{ margin: '0 0 20px 0' }}>Schedule Meeting: {project.title || project.name}</h2>
           
           <div style={{ background: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
             <h3 style={{ margin: '0 0 15px 0' }}>Meeting Details</h3>
