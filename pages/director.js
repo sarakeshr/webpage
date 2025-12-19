@@ -5,12 +5,8 @@ export default function Director() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/directordashboard/projects');
+    router.replace('/directordashboard/projects');
   }, [router]);
 
-  return (
-    <div style={{ padding: '50px', textAlign: 'center' }}>
-      <h2>Redirecting to Projects...</h2>
-    </div>
-  );
+  return <div>Redirecting...</div>;
 }

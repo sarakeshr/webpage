@@ -5,14 +5,8 @@ export default function Client() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/clientdashboard/projects');
+    router.replace('/clientdashboard/projects');
   }, [router]);
 
-
-
-  return (
-    <div style={{ padding: '50px', textAlign: 'center' }}>
-      <h2>Redirecting to Projects...</h2>
-    </div>
-  );
+  return <div>Redirecting...</div>;
 }

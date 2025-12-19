@@ -1,113 +1,43 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-export default function JitsiMeeting({ meetingId, userId, onMeetingEnd }) {
-  const jitsiContainer = useRef(null);
-  const [api, setApi] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function JitsiMeeting({ roomName, displayName, onClose }) {
+  const jitsiContainerRef = useRef(null);
+  const apiRef = useRef(null);
 
   useEffect(() => {
-    const loadJitsi = async () => {
-      try {
-        // Get meeting token
-        const response = await fetch('/api/join-meeting', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ meetingId, userId })
-        });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-
-        // Load Jitsi script
-        const script = document.createElement('script');
-        script.src = `${process.env.NEXT_PUBLIC_JITSI_URL}/external_api.js`;
-        script.async = true;
-        script.onload = () => initJitsi(data);
-        document.body.appendChild(script);
-      } catch (err) {
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
-    const initJitsi = (data) => {
+    if (typeof window !== 'undefined' && window.JitsiMeetExternalAPI) {
+      const domain = 'meet.jit.si';
       const options = {
-        roomName: data.roomName,
+        roomName: roomName || 'test-room',
         width: '100%',
         height: 600,
-        parentNode: jitsiContainer.current,
-        jwt: data.token,
-        configOverwrite: {
-          startWithAudioMuted: !data.isModerator,
-          startWithVideoMuted: !data.isModerator,
-          disableModeratorIndicator: false,
-          enableLobbyChat: true,
-          prejoinPageEnabled: true
+        parentNode: jitsiContainerRef.current,
+        userInfo: {
+          displayName: displayName || 'Anonymous'
         },
-        interfaceConfigOverwrite: {
-          TOOLBAR_BUTTONS: data.isModerator ? [
-            'microphone', 'camera', 'desktop', 'chat', 'raisehand',
-            'participants-pane', 'tileview', 'videoquality', 'filmstrip',
-            'settings', 'hangup', 'mute-everyone', 'security'
-          ] : [
-            'microphone', 'camera', 'chat', 'raisehand',
-            'participants-pane', 'tileview', 'settings', 'hangup'
-          ]
+        configOverwrite: {
+          startWithAudioMuted: true,
+          startWithVideoMuted: true
         }
       };
 
-      const jitsiApi = new window.JitsiMeetExternalAPI(process.env.NEXT_PUBLIC_JITSI_DOMAIN, options);
+      apiRef.current = new window.JitsiMeetExternalAPI(domain, options);
 
-      // Moderator-only event listeners
-      if (data.isModerator) {
-        jitsiApi.addEventListener('participantJoined', (participant) => {
-          console.log('Participant joined:', participant);
-        });
-
-        jitsiApi.addEventListener('participantKickedOut', (participant) => {
-          console.log('Participant kicked:', participant);
-        });
-      }
-
-      jitsiApi.addEventListener('readyToClose', () => {
-        if (onMeetingEnd) onMeetingEnd();
+      apiRef.current.addEventListener('videoConferenceLeft', () => {
+        if (onClose) onClose();
       });
-
-      setApi(jitsiApi);
-      setLoading(false);
-    };
-
-    loadJitsi();
+    }
 
     return () => {
-      if (api) api.dispose();
+      if (apiRef.current) {
+        apiRef.current.dispose();
+      }
     };
-  }, [meetingId, userId]);
-
-  // Moderator control functions
-  const muteParticipant = (participantId) => {
-    if (api) api.executeCommand('muteEveryone');
-  };
-
-  const kickParticipant = (participantId) => {
-    if (api) api.executeCommand('kickParticipant', participantId);
-  };
-
-  const endMeeting = () => {
-    if (api) api.executeCommand('hangup');
-  };
-
-  const toggleLobby = (enable) => {
-    if (api) api.executeCommand('toggleLobby', enable);
-  };
-
-  if (loading) return <div>Loading meeting...</div>;
-  if (error) return <div>Error: {error}</div>;
+  }, [roomName, displayName, onClose]);
 
   return (
     <div>
-      <div ref={jitsiContainer} style={{ height: '600px', width: '100%' }} />
+      <div ref={jitsiContainerRef} style={{ width: '100%', height: '600px' }} />
     </div>
   );
 }

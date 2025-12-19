@@ -3,39 +3,19 @@ import { useState } from 'react';
 export default function TestNotifications() {
   const [result, setResult] = useState('');
 
-  const testCreateNotification = async () => {
+  const testNotification = async () => {
     try {
-      const response = await fetch('/api/notifications', {
+      const response = await fetch('/api/notifications', { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userIds: ['1', '2'],
+          userId: 'test-user',
           message: 'Test notification',
-          type: 'test'
+          type: 'info'
         })
       });
       const data = await response.json();
-      setResult('Created: ' + JSON.stringify(data, null, 2));
-    } catch (error) {
-      setResult('Error: ' + error.message);
-    }
-  };
-
-  const testGetNotifications = async () => {
-    try {
-      const response = await fetch('/api/notifications');
-      const data = await response.json();
-      setResult('All notifications: ' + JSON.stringify(data, null, 2));
-    } catch (error) {
-      setResult('Error: ' + error.message);
-    }
-  };
-
-  const clearNotifications = async () => {
-    try {
-      const response = await fetch('/api/notifications', { method: 'DELETE' });
-      const data = await response.json();
-      setResult('Cleared: ' + JSON.stringify(data, null, 2));
+      setResult(JSON.stringify(data, null, 2));
     } catch (error) {
       setResult('Error: ' + error.message);
     }
@@ -44,18 +24,8 @@ export default function TestNotifications() {
   return (
     <div style={{ padding: '20px' }}>
       <h1>Test Notifications</h1>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button onClick={testCreateNotification} style={{ padding: '10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}>
-          Create Test Notification
-        </button>
-        <button onClick={testGetNotifications} style={{ padding: '10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px' }}>
-          Get All Notifications
-        </button>
-        <button onClick={clearNotifications} style={{ padding: '10px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px' }}>
-          Clear All Notifications
-        </button>
-      </div>
-      <pre style={{ background: '#f8f9fa', padding: '15px', borderRadius: '4px', whiteSpace: 'pre-wrap' }}>
+      <button onClick={testNotification}>Send Test Notification</button>
+      <pre style={{ background: '#f5f5f5', padding: '10px', marginTop: '20px' }}>
         {result}
       </pre>
     </div>

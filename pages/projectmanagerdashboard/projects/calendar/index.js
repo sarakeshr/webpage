@@ -36,25 +36,76 @@ export default function ProjectManagerCalendar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProfile]);
+  
+  // Re-fetch team when project changes
+  useEffect(() => {
+    fetchTeam();
+  }, [localStorage.getItem('selectedProjectId')]);
 
   const fetchTeam = async () => {
     try {
-      const response = await fetch('/api/team');
-      const data = await response.json();
-      setTeam(data || []);
+      const projectId = localStorage.getItem('selectedProjectId');
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      if (!projectId || !user._id) {
+        setTeam([]);
+        return;
+      }
+      
+      // Fetch project details to get actual team members
+      const projectResponse = await fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`);
+      const projects = await projectResponse.json();
+      
+      // Find the selected project
+      const selectedProject = projects.find(p => p._id === projectId);
+      
+      if (selectedProject && selectedProject.teamMembers) {
+        // Convert team members to the expected format
+        const projectTeam = selectedProject.teamMembers.map(member => ({
+          id: member._id,
+          username: member.username,
+          name: member.username.charAt(0).toUpperCase() + member.username.slice(1),
+          role: member.role.charAt(0).toUpperCase() + member.role.slice(1).replace('_', ' '),
+          email: member.email
+        }));
+        
+        // Also include the project manager if not already in team
+        if (selectedProject.projectManager && !projectTeam.find(tm => tm.id === selectedProject.projectManager._id)) {
+          projectTeam.push({
+            id: selectedProject.projectManager._id,
+            username: selectedProject.projectManager.username,
+            name: selectedProject.projectManager.username.charAt(0).toUpperCase() + selectedProject.projectManager.username.slice(1),
+            role: 'Project Manager',
+            email: selectedProject.projectManager.email
+          });
+        }
+        
+        setTeam(projectTeam);
+      } else {
+        setTeam([]);
+      }
     } catch (error) {
+      console.error('Error fetching team:', error);
       setTeam([]);
     }
   };
 
   const fetchMeetings = async () => {
     try {
+      console.log('Fetching meetings...');
       const response = await fetch('/api/meetings');
+      console.log('Meetings API response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched meetings:', data);
         setMeetings(Array.isArray(data) ? data : []);
+      } else {
+        console.error('Failed to fetch meetings:', response.status);
+        setMeetings([]);
       }
     } catch (error) {
+      console.error('Error fetching meetings:', error);
       setMeetings([]);
     }
   };
@@ -257,8 +308,9 @@ export default function ProjectManagerCalendar() {
       return;
     }
 
+    const projectId = localStorage.getItem('selectedProjectId');
     const baseMeetingData = {
-      projectId: 1,
+      projectId: projectId || '1',
       title: newMeeting.title,
       date: newMeeting.date,
       time: newMeeting.time,
@@ -267,8 +319,55 @@ export default function ProjectManagerCalendar() {
       location: 'Online (Jitsi Meet)',
       participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
       hostId: currentUser?._id || 'demo_user',
+      creatorRole: currentUser?.role || 'project_manager',
       reminder: newMeeting.reminder,
       repeat: newMeeting.repeat
+    };
+
+    console.log('Creating meeting with data:', baseMeetingData);
+
+    try {
+      const response = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseMeetingData)
+      });
+      
+      console.log('Meeting API response status:', response.status);
+      const responseData = await response.json();
+      console.log('Meeting API response data:', responseData);
+      
+      if (response.ok) {
+        console.log('Meeting created successfully, refreshing meetings...');
+        fetchMeetings();
+      } else {
+        console.error('Meeting creation failed:', responseData);
+        const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
+        setMeetings([...meetings, ...allMeetings]);
+      }
+    } catch (error) {
+      console.error('Meeting creation error:', error);
+      const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
+      setMeetings([...meetings, ...allMeetings]);
+    }
+    
+    setIsCreatingMeeting(false);
+    setNewMeeting(null);
+  };
+
+  const forceCreateMeeting = async () => {
+    const projectId = localStorage.getItem('selectedProjectId');
+    const baseMeetingData = {
+      projectId: projectId || '1',
+      title: overlapWarning.newMeeting.title,
+      date: overlapWarning.newMeeting.date,
+      time: overlapWarning.newMeeting.time,
+      duration: overlapWarning.newMeeting.duration,
+      purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
+      location: 'Online (Jitsi Meet)',
+      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
+      hostId: currentUser?._id || 'demo_user',
+      creatorRole: currentUser?.role || 'project_manager'
     };
 
     try {
@@ -281,33 +380,14 @@ export default function ProjectManagerCalendar() {
       if (response.ok) {
         fetchMeetings();
       } else {
-        const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
-        setMeetings([...meetings, ...allMeetings]);
+        const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+        setMeetings([...meetings, newMeetingLocal]);
       }
     } catch (error) {
-      const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
-      setMeetings([...meetings, ...allMeetings]);
+      const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+      setMeetings([...meetings, newMeetingLocal]);
     }
     
-    setIsCreatingMeeting(false);
-    setNewMeeting(null);
-  };
-
-  const forceCreateMeeting = async () => {
-    const baseMeetingData = {
-      projectId: 1,
-      title: overlapWarning.newMeeting.title,
-      date: overlapWarning.newMeeting.date,
-      time: overlapWarning.newMeeting.time,
-      duration: overlapWarning.newMeeting.duration,
-      purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
-      location: 'Online (Jitsi Meet)',
-      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
-      hostId: currentUser?._id || 'demo_user'
-    };
-
-    const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
-    setMeetings([...meetings, newMeetingLocal]);
     setOverlapWarning(null);
     setIsCreatingMeeting(false);
     setNewMeeting(null);
@@ -316,8 +396,9 @@ export default function ProjectManagerCalendar() {
   const useNextSlot = async () => {
     if (!overlapWarning.nextSlot) return;
     
+    const projectId = localStorage.getItem('selectedProjectId');
     const baseMeetingData = {
-      projectId: 1,
+      projectId: projectId || '1',
       title: overlapWarning.newMeeting.title,
       date: overlapWarning.newMeeting.date,
       time: overlapWarning.nextSlot,
@@ -325,11 +406,28 @@ export default function ProjectManagerCalendar() {
       purpose: overlapWarning.newMeeting.description || 'Calendar meeting',
       location: 'Online (Jitsi Meet)',
       participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
-      hostId: currentUser?._id || 'demo_user'
+      hostId: currentUser?._id || 'demo_user',
+      creatorRole: currentUser?.role || 'project_manager'
     };
 
-    const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
-    setMeetings([...meetings, newMeetingLocal]);
+    try {
+      const response = await fetch('/api/meetings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(baseMeetingData)
+      });
+      
+      if (response.ok) {
+        fetchMeetings();
+      } else {
+        const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+        setMeetings([...meetings, newMeetingLocal]);
+      }
+    } catch (error) {
+      const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
+      setMeetings([...meetings, newMeetingLocal]);
+    }
+    
     setOverlapWarning(null);
     setIsCreatingMeeting(false);
     setNewMeeting(null);
@@ -401,6 +499,7 @@ export default function ProjectManagerCalendar() {
         <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
           <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Projects</Link>
+          <Link href="/projectmanagerdashboard/projects/board" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Board</Link>
           <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <div style={{ position: 'relative' }} className="profile-dropdown">
             <button
@@ -795,7 +894,7 @@ export default function ProjectManagerCalendar() {
                           }}
                           style={{ marginRight: '8px' }}
                         />
-                        Select All ({team.length} users)
+                        Select All ({team.length} team members)
                       </label>
                     </div>
                     {team.map(user => (
@@ -822,11 +921,11 @@ export default function ProjectManagerCalendar() {
                     ))}
                   </>
                 ) : (
-                  <div style={{ padding: '12px', color: '#666', textAlign: 'center' }}>Loading users...</div>
+                  <div style={{ padding: '12px', color: '#666', textAlign: 'center' }}>No team members found for this project</div>
                 )}
               </div>
               <small style={{ color: '#6c757d', marginTop: '5px', display: 'block' }}>
-                Selected: {selectedParticipants.length} participant(s)
+                Selected: {selectedParticipants.length} of {team.length} team members
               </small>
             </div>
             

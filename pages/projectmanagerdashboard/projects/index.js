@@ -146,6 +146,15 @@ export default function ProjectManagerProjects() {
                     📅 Calendar
                   </button>
                 )}
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('selectedProjectId', project._id);
+                    router.push('/projectmanagerdashboard/projects/board');
+                  }}
+                  style={{ background: '#6f42c1', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  📋 Board
+                </button>
                 {project.status !== 'Completed' && (currentUser?.role === 'admin' || currentUser?.role === 'project_manager') && (
                   <button 
                     onClick={() => {

@@ -88,7 +88,7 @@ export default async function handler(req, res) {
       const roomName = `${projectName}-${dateStr}`;
       
       const newMeeting = new Meeting({
-        projectId: req.body.projectId,
+        projectId: typeof req.body.projectId === 'string' ? parseInt(req.body.projectId) || 1 : req.body.projectId,
         title: req.body.title,
         timestamp: timestamp,
         duration: req.body.duration || '30',

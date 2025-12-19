@@ -1,13 +1,36 @@
-routes : 
-admin/
-admin/dashboard
-admin/meeting
+Project Notes and TODO Items:
 
+1. Meeting System
+   - Jitsi integration working
+   - Need to add recording functionality
+   - Calendar integration pending
 
-meeting/id
+2. User Roles
+   - Admin: Full access
+   - Project Manager: Can create/edit projects, schedule meetings
+   - Developer: Can view projects, join meetings
+   - Tester: Can view projects, join meetings
+   - Client: Can view assigned projects, join meetings
+   - CRM: Can view projects for sales purposes
+   - Director: Can view all projects, join meetings
 
+3. Database Schema
+   - Users collection
+   - Projects collection
+   - Meetings collection
+   - Messages collection
+   - Notifications collection
 
-features :
-mail(from,to,sub,body)
-meeting(emailID[])
+4. API Endpoints
+   - /api/login
+   - /api/register
+   - /api/projects
+   - /api/meetings
+   - /api/messages
+   - /api/notifications
 
+5. Frontend Structure
+   - Role-based dashboards
+   - Project management interface
+   - Meeting scheduling system
+   - Messaging system

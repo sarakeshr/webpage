@@ -5,12 +5,8 @@ export default function ProjectManager() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/projectmanagerdashboard/projects');
+    router.replace('/projectmanagerdashboard/projects');
   }, [router]);
 
-  return (
-    <div style={{ padding: '50px', textAlign: 'center' }}>
-      <h2>Redirecting to Projects...</h2>
-    </div>
-  );
+  return <div>Redirecting...</div>;
 }

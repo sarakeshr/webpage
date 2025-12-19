@@ -5,12 +5,8 @@ export default function Admin() {
   const router = useRouter();
 
   useEffect(() => {
-    router.push('/admindashboard/projects');
+    router.replace('/admindashboard/projects');
   }, [router]);
 
-  return (
-    <div style={{ padding: '50px', textAlign: 'center' }}>
-      <h2>Redirecting to Admin Dashboard...</h2>
-    </div>
-  );
+  return <div>Redirecting...</div>;
 }
