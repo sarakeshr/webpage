@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dbConnect, { User } from '../../lib/db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = 'your-secret-key';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

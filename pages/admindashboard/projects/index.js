@@ -2,24 +2,19 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import NotificationBell from '../../../components/NotificationBell';
-import { getApiEndpoint } from '../../../utils/apiEndpoints';
 
 export default function AdminProjects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    setCurrentUser(user);
     fetchProjects();
   }, []);
 
   const fetchProjects = async () => {
     try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const response = await fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`);
+      const response = await fetch('/api/admin/projects');
       const data = await response.json();
       setProjects(data);
     } catch (error) {
@@ -32,7 +27,7 @@ export default function AdminProjects() {
   const deleteProject = async (projectId) => {
     if (confirm('Are you sure you want to delete this project?')) {
       try {
-        const response = await fetch(`/api/projects?id=${projectId}`, {
+        const response = await fetch(`/api/admin/projects?id=${projectId}`, {
           method: 'DELETE'
         });
         if (response.ok) {
@@ -62,10 +57,9 @@ export default function AdminProjects() {
   return (
     <div>
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
+        <h1 style={{ margin: 0, fontSize: '24px' }}>Admin Dashboard</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          <Link href={getApiEndpoint('projects', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href={getApiEndpoint('calendar', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>📅 Calendar</Link>
+          <Link href="/admindashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
           <NotificationBell userRole="admin" />
           <a onClick={logout} style={{ color: 'white', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px' }}>Logout</a>
         </div>
@@ -74,7 +68,7 @@ export default function AdminProjects() {
       <div style={{ padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2>Project Management</h2>
-          <Link href={getApiEndpoint('projects/create', currentUser?.role)} style={{ background: '#28a745', color: 'white', padding: '10px 20px', textDecoration: 'none', borderRadius: '4px' }}>
+          <Link href="/admindashboard/projects/create" style={{ background: '#28a745', color: 'white', padding: '10px 20px', textDecoration: 'none', borderRadius: '4px' }}>
             + Create New Project
           </Link>
         </div>
@@ -123,12 +117,9 @@ export default function AdminProjects() {
                         </td>
                         <td style={{ padding: '15px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                            <button 
-                              onClick={() => router.push(getApiEndpoint(`projects/edit/${project._id}`, currentUser?.role))}
-                              style={{ background: '#ffc107', color: 'black', border: 'none', padding: '5px 10px', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
-                            >
+                            <Link href={`/admindashboard/projects/edit/${project._id}`} style={{ background: '#007bff', color: 'white', padding: '5px 10px', textDecoration: 'none', borderRadius: '3px', fontSize: '12px' }}>
                               Edit
-                            </button>
+                            </Link>
                             <button 
                               onClick={() => deleteProject(project._id)}
                               style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '3px', cursor: 'pointer', fontSize: '12px' }}
@@ -144,7 +135,7 @@ export default function AdminProjects() {
               </table>
             ) : (
               <div style={{ padding: '50px', textAlign: 'center', color: '#666' }}>
-                No projects found. <Link href={getApiEndpoint('projects/create', currentUser?.role)}>Create your first project</Link>
+                No projects found. <Link href="/admindashboard/projects/create">Create your first project</Link>
               </div>
             )}
           </div>

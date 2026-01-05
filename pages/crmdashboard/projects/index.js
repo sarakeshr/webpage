@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import NotificationBell from '../../../components/NotificationBell';
-import { getApiEndpoint } from '../../../utils/apiEndpoints';
 
 export default function CRMProjects() {
   const [showProfile, setShowProfile] = useState(false);
@@ -61,9 +60,8 @@ export default function CRMProjects() {
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          <Link href={getApiEndpoint('projects', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href={getApiEndpoint('messages', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
-          <Link href={getApiEndpoint('calendar', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>📅 Calendar</Link>
+          <Link href="/crmdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
+          <Link href="/crmdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <NotificationBell userRole="crm" />
           <div style={{ position: 'relative' }} className="profile-dropdown">
             <button
@@ -143,7 +141,7 @@ export default function CRMProjects() {
                   <button 
                     onClick={() => {
                       localStorage.setItem('selectedProjectId', project._id);
-                      router.push(getApiEndpoint('projects/calendar', currentUser?.role));
+                      router.push('/crmdashboard/projects/calendar');
                     }}
                     style={{ background: '#17a2b8', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                   >
@@ -153,16 +151,7 @@ export default function CRMProjects() {
                 <button 
                   onClick={() => {
                     localStorage.setItem('selectedProjectId', project._id);
-                    router.push(getApiEndpoint('projects/board', currentUser?.role));
-                  }}
-                  style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  📋 Board
-                </button>
-                <button 
-                  onClick={() => {
-                    localStorage.setItem('selectedProjectId', project._id);
-                    router.push(getApiEndpoint('projects/view', currentUser?.role));
+                    router.push('/crmdashboard/projects/view');
                   }}
                   style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                 >

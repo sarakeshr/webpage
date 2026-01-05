@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import NotificationBell from '../../../components/NotificationBell';
-import { getApiEndpoint } from '../../../utils/apiEndpoints';
 
 export default function ProjectManagerProjects() {
   const [showProfile, setShowProfile] = useState(false);
@@ -59,9 +58,8 @@ export default function ProjectManagerProjects() {
       <nav style={{ background: '#343a40', color: 'white', padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: '24px' }}>{currentUser?.role ? `${currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).replace('_', ' ')} Dashboard` : 'Dashboard'}</h1>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-          <Link href={getApiEndpoint('projects', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
-          <Link href={getApiEndpoint('messages', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
-          <Link href={getApiEndpoint('calendar', currentUser?.role)} style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>📅 Calendar</Link>
+          <Link href="/projectmanagerdashboard/projects" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px', background: '#495057' }}>Projects</Link>
+          <Link href="/projectmanagerdashboard/messages" style={{ color: 'white', textDecoration: 'none', padding: '8px 16px', borderRadius: '4px' }}>Messages</Link>
           <NotificationBell userRole="project_manager" />
           <div style={{ position: 'relative' }} className="profile-dropdown">
             <button
@@ -141,8 +139,7 @@ export default function ProjectManagerProjects() {
                   <button 
                     onClick={() => {
                       localStorage.setItem('selectedProjectId', project._id);
-                      const calendarUrl = getApiEndpoint('projects/calendar', currentUser?.role);
-                      router.push(calendarUrl);
+                      router.push('/projectmanagerdashboard/projects/calendar');
                     }}
                     style={{ background: '#17a2b8', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                   >
@@ -152,8 +149,7 @@ export default function ProjectManagerProjects() {
                 <button 
                   onClick={() => {
                     localStorage.setItem('selectedProjectId', project._id);
-                    const boardUrl = getApiEndpoint('projects/board', currentUser?.role);
-                    router.push(boardUrl);
+                    router.push('/projectmanagerdashboard/projects/board');
                   }}
                   style={{ background: '#6f42c1', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                 >
@@ -163,30 +159,25 @@ export default function ProjectManagerProjects() {
                   <button 
                     onClick={() => {
                       localStorage.setItem('selectedProjectId', project._id);
-                      const meetingUrl = getApiEndpoint('projects/meeting', currentUser?.role);
-                      router.push(meetingUrl);
+                      router.push('/projectmanagerdashboard/projects/meeting');
                     }}
                     style={{ background: '#28a745', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     Meeting
                   </button>
                 )}
-                {(currentUser?.role === 'admin' || currentUser?.role === 'project_manager') && (
-                  <button 
-                    onClick={() => {
-                      const editUrl = getApiEndpoint(`projects/edit/${project._id}`, currentUser?.role);
-                      router.push(editUrl);
-                    }}
-                    style={{ background: '#ffc107', color: 'black', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
-                  >
-                    ✏️ Edit
-                  </button>
-                )}
+                <button 
+                  onClick={() => {
+                    router.push(`/projectmanagerdashboard/projects/edit/${project._id}`);
+                  }}
+                  style={{ background: '#ffc107', color: 'black', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  ✏️ Edit
+                </button>
                 <button 
                   onClick={() => {
                     localStorage.setItem('selectedProjectId', project._id);
-                    const viewUrl = getApiEndpoint('projects/view', currentUser?.role);
-                    router.push(viewUrl);
+                    router.push('/projectmanagerdashboard/projects/view');
                   }}
                   style={{ background: '#007bff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' }}
                 >

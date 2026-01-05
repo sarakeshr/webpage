@@ -1,8 +1,4 @@
-import dbConnect, { BoardColumn, rolePermissions } from '../../lib/db';
-
-const hasPermission = (userRole, permission) => {
-  return rolePermissions[userRole]?.includes(permission) || false;
-};
+import dbConnect, { BoardColumn } from '../../lib/db';
 
 export default async function handler(req, res) {
   await dbConnect();
@@ -39,7 +35,7 @@ export default async function handler(req, res) {
       const { projectId, name, color, userRole } = req.body;
       
       // Check permissions
-      if (!hasPermission(userRole, 'manage_boards')) {
+      if (userRole !== 'admin' && userRole !== 'project_manager') {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
       
@@ -65,7 +61,7 @@ export default async function handler(req, res) {
       const { id, name, color, userRole } = req.body;
       
       // Check permissions
-      if (!hasPermission(userRole, 'manage_boards')) {
+      if (userRole !== 'admin' && userRole !== 'project_manager') {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
       
@@ -89,7 +85,7 @@ export default async function handler(req, res) {
       const { id, userRole } = req.body;
       
       // Check permissions
-      if (!hasPermission(userRole, 'manage_boards')) {
+      if (userRole !== 'admin' && userRole !== 'project_manager') {
         return res.status(403).json({ error: 'Insufficient permissions' });
       }
       
