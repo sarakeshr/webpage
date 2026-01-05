@@ -28,7 +28,8 @@ export default function EditProject() {
 
   const fetchProject = async () => {
     try {
-      const response = await fetch('/api/admin/projects');
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const response = await fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`);
       const projects = await response.json();
       const project = projects.find(p => p._id === id);
       
@@ -65,7 +66,7 @@ export default function EditProject() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/admin/projects', {
+      const response = await fetch('/api/projects', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -7,6 +7,7 @@ export default function MeetingRoom() {
   const [isHost, setIsHost] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+  const [hasActiveMeetingTab, setHasActiveMeetingTab] = useState(false);
   const router = useRouter();
   const { roomName } = router.query;
 
@@ -18,14 +19,37 @@ export default function MeetingRoom() {
     
     if (roomName) {
       checkMeetingStatus();
+      checkActiveMeetingSession();
       if (!userIsHost) {
         const interval = setInterval(() => {
           checkMeetingStatus();
+          checkActiveMeetingSession();
         }, 3000);
         return () => clearInterval(interval);
       }
     }
   }, [roomName]);
+
+  const checkActiveMeetingSession = () => {
+    const sessionKey = `meeting_session_${roomName}_${currentUser?.username || 'user'}`;
+    const sessionData = localStorage.getItem(sessionKey);
+    
+    if (sessionData) {
+      const { timestamp, windowId } = JSON.parse(sessionData);
+      const now = Date.now();
+      
+      // Check if session is recent (within 5 minutes) and from different window
+      if (now - timestamp < 300000 && windowId !== window.name) {
+        setHasActiveMeetingTab(true);
+      } else {
+        // Clean up old session
+        localStorage.removeItem(sessionKey);
+        setHasActiveMeetingTab(false);
+      }
+    } else {
+      setHasActiveMeetingTab(false);
+    }
+  };
 
   const checkMeetingStatus = async () => {
     try {
@@ -48,22 +72,73 @@ export default function MeetingRoom() {
   };
 
   const joinMeeting = async () => {
+    // Check if user already has an active meeting tab
+    if (hasActiveMeetingTab) {
+      alert('You have already joined this meeting! Please check your other browser tabs.');
+      return;
+    }
+    
+    // Check if meeting is still active before joining
+    try {
+      const statusResponse = await fetch(`/api/meeting-status?roomName=${roomName}`);
+      const statusData = await statusResponse.json();
+      
+      if (statusData.meetingEnded) {
+        alert('This meeting has ended and is no longer active.');
+        return;
+      }
+      
+      if (!isHost && !statusData.hostJoined) {
+        alert('The host has not joined yet. Please wait for the meeting to start.');
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking meeting status:', error);
+    }
+    
     const baseUrl = `${process.env.NEXT_PUBLIC_JITSI_URL || 'https://localhost:8080'}/${roomName}`;
+    const userName = currentUser?.username || currentUser?.name || 'User';
+    
+    // Clear any existing Jitsi user data from localStorage
+    try {
+      localStorage.removeItem('jitsiLocalStorage');
+      localStorage.removeItem('features/base/settings');
+      localStorage.removeItem('userInfo');
+    } catch (e) {}
+    
     let jitsiUrl;
     
     if (isHost) {
-      jitsiUrl = `${baseUrl}?moderator=true&userInfo.displayName=${encodeURIComponent(currentUser?.username || 'Moderator')}&roomName=${roomName}`;
+      jitsiUrl = `${baseUrl}?moderator=true&userInfo.displayName=${encodeURIComponent(userName)}&config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&roomName=${roomName}`;
       // Automatically mark host as joined when they open Jitsi (go to lobby)
       setTimeout(() => {
         markHostJoined();
       }, 2000);
     } else {
       jitsiUrl = hostJoined 
-        ? `${baseUrl}?moderator=false&userInfo.displayName=${encodeURIComponent(currentUser?.username || 'Participant')}`
-        : `${baseUrl}?moderator=false&userInfo.displayName=${encodeURIComponent(currentUser?.username || 'Participant')}`;
+        ? `${baseUrl}?moderator=false&userInfo.displayName=${encodeURIComponent(userName)}&config.prejoinPageEnabled=false&config.startWithAudioMuted=true&config.startWithVideoMuted=true`
+        : `${baseUrl}?moderator=false&userInfo.displayName=${encodeURIComponent(userName)}&config.prejoinPageEnabled=false&config.startWithAudioMuted=true&config.startWithVideoMuted=true`;
     }
     
-    window.open(jitsiUrl, '_blank');
+    // Set session tracking before opening meeting
+    const sessionKey = `meeting_session_${roomName}_${currentUser?.username || 'user'}`;
+    const windowId = 'meeting_' + Date.now();
+    localStorage.setItem(sessionKey, JSON.stringify({
+      timestamp: Date.now(),
+      windowId: windowId
+    }));
+    
+    const meetingWindow = window.open(jitsiUrl, '_blank');
+    meetingWindow.name = windowId;
+    
+    // Clean up session when meeting window is closed
+    const checkClosed = setInterval(() => {
+      if (meetingWindow.closed) {
+        localStorage.removeItem(sessionKey);
+        setHasActiveMeetingTab(false);
+        clearInterval(checkClosed);
+      }
+    }, 1000);
   };
   
   const markHostJoined = async () => {
@@ -182,6 +257,15 @@ export default function MeetingRoom() {
             <strong>Meeting:</strong> {roomName?.replace(/-/g, ' ')}
           </p>
         </div>
+        
+        {hasActiveMeetingTab && (
+          <div style={{ background: '#fff3cd', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ffeaa7' }}>
+            <p style={{ margin: 0, fontSize: '14px', color: '#856404' }}>
+              ⚠️ <strong>Active Session Detected:</strong> You already have this meeting open in another tab.
+            </p>
+          </div>
+        )}
+        
         {isHost ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
             <button
@@ -192,10 +276,21 @@ export default function MeetingRoom() {
             </button>
             
             <button
-              onClick={joinMeeting}
-              style={{ padding: '12px 24px', background: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' }}
+              onClick={hasActiveMeetingTab ? null : joinMeeting}
+              disabled={hasActiveMeetingTab}
+              style={{ 
+                padding: '12px 24px', 
+                background: hasActiveMeetingTab ? '#6c757d' : '#007bff', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '6px', 
+                cursor: hasActiveMeetingTab ? 'not-allowed' : 'pointer',
+                fontSize: '16px', 
+                fontWeight: 'bold',
+                opacity: hasActiveMeetingTab ? 0.6 : 1
+              }}
             >
-              🚀 Open Jitsi Meeting
+              {hasActiveMeetingTab ? '🚫 Meeting Already Open' : '🚀 Open Jitsi Meeting'}
             </button>
             
             {hostJoined && (
@@ -215,12 +310,34 @@ export default function MeetingRoom() {
             )}
           </div>
         ) : (
-          <button
-            onClick={joinMeeting}
-            style={{ padding: '12px 24px', background: '#28a745', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold' }}
-          >
-            🚀 Join Meeting
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
+            <button
+              onClick={hasActiveMeetingTab ? null : joinMeeting}
+              disabled={hasActiveMeetingTab}
+              style={{ 
+                padding: '12px 24px', 
+                background: hasActiveMeetingTab ? '#6c757d' : '#28a745', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '6px', 
+                cursor: hasActiveMeetingTab ? 'not-allowed' : 'pointer',
+                fontSize: '16px', 
+                fontWeight: 'bold',
+                opacity: hasActiveMeetingTab ? 0.6 : 1
+              }}
+            >
+              {hasActiveMeetingTab ? '🚫 Already Joined' : '🚀 Join Meeting'}
+            </button>
+            <button
+              onClick={() => {
+                const role = currentUser?.role || 'client';
+                window.location.href = `/${role}dashboard/projects/view`;
+              }}
+              style={{ padding: '10px 20px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+            >
+              ← Go Back
+            </button>
+          </div>
         )}
       </div>
     </div>

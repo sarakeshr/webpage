@@ -6,10 +6,14 @@ import Head from 'next/head';
 export default function ProjectManagerCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [meetings, setMeetings] = useState([]);
+  const [projectDeadlines, setProjectDeadlines] = useState([]);
+  const [taskDeadlines, setTaskDeadlines] = useState([]);
   const [draggedMeeting, setDraggedMeeting] = useState(null);
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+  const [isEditingMeeting, setIsEditingMeeting] = useState(false);
   const [newMeeting, setNewMeeting] = useState(null);
   const [hoveredMeeting, setHoveredMeeting] = useState(null);
+  const [hoveredDeadline, setHoveredDeadline] = useState(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [resizingMeeting, setResizingMeeting] = useState(null);
@@ -18,15 +22,88 @@ export default function ProjectManagerCalendar() {
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [showProfile, setShowProfile] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [selectedDeadline, setSelectedDeadline] = useState(null);
+  const [selectedDeadlineDetails, setSelectedDeadlineDetails] = useState(null);
   const [overlapWarning, setOverlapWarning] = useState(null);
   const router = useRouter();
 
+  // Debug function to find where meetings are stored
+  const debugStorageLocations = () => {
+    console.log('=== STORAGE DEBUG ===');
+    
+    // Check all localStorage keys
+    console.log('localStorage keys:');
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const value = localStorage.getItem(key);
+      if (key.includes('meeting') || key.includes('Meeting') || value.includes('jj') || value.includes('ntng')) {
+        console.log(`  ${key}:`, value);
+      }
+    }
+    
+    // Check all sessionStorage keys
+    console.log('sessionStorage keys:');
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      const value = sessionStorage.getItem(key);
+      if (key.includes('meeting') || key.includes('Meeting') || value.includes('jj') || value.includes('ntng')) {
+        console.log(`  ${key}:`, value);
+      }
+    }
+    
+    // Check current meetings state
+    console.log('Current meetings state:', meetings);
+    
+    // Check if meetings have specific IDs that indicate local creation
+    meetings.forEach(meeting => {
+      console.log(`Meeting "${meeting.title}" ID: ${meeting._id} (${meeting._id.startsWith('local_') ? 'LOCAL' : meeting._id.startsWith('demo') ? 'DEMO' : 'DATABASE'})`);
+    });
+    
+    console.log('=== END STORAGE DEBUG ===');
+  };
+
   useEffect(() => {
+    // STOP ALL INTERVALS to prevent continuous fetching
+    const highestId = setTimeout(() => {}, 0);
+    for (let i = 0; i < highestId; i++) {
+      clearTimeout(i);
+      clearInterval(i);
+    }
+    
+    // Clear only meeting-related storage, preserve user/auth data
+    localStorage.removeItem('cachedMeetings');
+    sessionStorage.removeItem('cachedMeetings');
+    localStorage.removeItem('meetings');
+    sessionStorage.removeItem('meetings');
+    
+    // Clear any project-specific meeting cache
+    const projectId = localStorage.getItem('selectedProjectId');
+    if (projectId) {
+      localStorage.removeItem(`meetings_${projectId}`);
+      sessionStorage.removeItem(`meetings_${projectId}`);
+    }
+    
+    console.log('=== STOPPED ALL INTERVALS & CLEARED STORAGE ===');
+    
     fetchMeetings();
+    fetchProjectDeadlines();
+    fetchTaskDeadlines();
     fetchTeam();
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     setCurrentUser(user);
     
+    const handleClickOutside = (event) => {
+      if (showProfile && !event.target.closest('.profile-dropdown')) {
+        setShowProfile(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []); // Remove showProfile dependency to prevent continuous re-runs
+  
+  // Handle profile dropdown separately
+  useEffect(() => {
     const handleClickOutside = (event) => {
       if (showProfile && !event.target.closest('.profile-dropdown')) {
         setShowProfile(false);
@@ -40,7 +117,7 @@ export default function ProjectManagerCalendar() {
   // Re-fetch team when project changes
   useEffect(() => {
     fetchTeam();
-  }, [localStorage.getItem('selectedProjectId')]);
+  }, []);
 
   const fetchTeam = async () => {
     try {
@@ -90,24 +167,94 @@ export default function ProjectManagerCalendar() {
     }
   };
 
+  const fetchProjectDeadlines = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const selectedProjectId = localStorage.getItem('selectedProjectId');
+      
+      const response = await fetch(`/api/projects?userId=${user._id}&userRole=${user.role}`);
+      if (response.ok) {
+        const projects = await response.json();
+        const deadlines = projects
+          .filter(project => project.deadline && project._id === selectedProjectId)
+          .map(project => ({
+            id: `project-${project._id}`,
+            title: `📋 ${project.title} (Deadline)`,
+            date: project.deadline.split('T')[0],
+            type: 'project',
+            priority: 'High',
+            projectName: project.title
+          }));
+        setProjectDeadlines(deadlines);
+      }
+    } catch (error) {
+      console.error('Error fetching project deadlines:', error);
+    }
+  };
+
+  const fetchTaskDeadlines = async () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const projectId = localStorage.getItem('selectedProjectId');
+      if (!projectId) return;
+      
+      const response = await fetch(`/api/tasks?projectId=${projectId}&userId=${user._id}&userRole=${user.role}`);
+      if (response.ok) {
+        const tasks = await response.json();
+        let filteredTasks = tasks.filter(task => task.dueDate && task.projectId === projectId);
+        
+        // For non-project managers, only show tasks assigned to them
+        if (user.role !== 'project_manager') {
+          filteredTasks = filteredTasks.filter(task => task.assignee?._id === user._id);
+        }
+        
+        const deadlines = filteredTasks.map(task => ({
+          id: `task-${task._id}`,
+          title: `📝 ${task.title}`,
+          date: task.dueDate.split('T')[0],
+          type: 'task',
+          priority: task.priority || 'Medium',
+          assignee: task.assignee?.username
+        }));
+        setTaskDeadlines(deadlines);
+      }
+    } catch (error) {
+      console.error('Error fetching task deadlines:', error);
+    }
+  };
+
   const fetchMeetings = async () => {
     try {
-      console.log('Fetching meetings...');
-      const response = await fetch('/api/meetings');
-      console.log('Meetings API response status:', response.status);
+      const projectId = localStorage.getItem('selectedProjectId');
+      console.log('=== FETCH MEETINGS DEBUG ===');
+      console.log('Project ID:', projectId);
+      
+      if (!projectId) {
+        console.log('No project ID, setting empty meetings');
+        setMeetings([]);
+        return;
+      }
+      
+      const response = await fetch(`/api/meetings?projectId=${projectId}`);
+      console.log('API Response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched meetings:', data);
-        setMeetings(Array.isArray(data) ? data : []);
+        console.log('Raw API data:', data);
+        
+        // Filter meetings by project ID on client side as backup
+        const projectMeetings = Array.isArray(data) ? data.filter(meeting => meeting.projectId === projectId) : [];
+        console.log('Filtered meetings for project:', projectMeetings);
+        setMeetings(projectMeetings);
       } else {
-        console.error('Failed to fetch meetings:', response.status);
+        console.log('API failed, setting empty meetings');
         setMeetings([]);
       }
     } catch (error) {
-      console.error('Error fetching meetings:', error);
+      console.error('Fetch error:', error);
       setMeetings([]);
     }
+    console.log('=== END FETCH MEETINGS DEBUG ===');
   };
 
   const getDaysInMonth = (date) => {
@@ -128,6 +275,34 @@ export default function ProjectManagerCalendar() {
     return days;
   };
 
+  const getDeadlinesForDate = (date) => {
+    if (!date) return [];
+    
+    // Create date string in YYYY-MM-DD format using local timezone
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    const allDeadlines = [...projectDeadlines, ...taskDeadlines];
+    const filteredDeadlines = allDeadlines.filter(deadline => {
+      // Normalize deadline date to YYYY-MM-DD format
+      const deadlineDate = deadline.date.split('T')[0];
+      return deadlineDate === dateStr;
+    });
+    
+    return filteredDeadlines;
+  };
+
+  const getPriorityColor = (priority) => {
+    switch (priority) {
+      case 'High': case 'Urgent': return '#dc3545';
+      case 'Medium': return '#ffc107';
+      case 'Low': return '#28a745';
+      default: return '#6c757d';
+    }
+  };
+
   const getMeetingsForDate = (date) => {
     if (!date) return [];
     const year = date.getFullYear();
@@ -142,18 +317,22 @@ export default function ProjectManagerCalendar() {
   const handleCellClick = (date, event) => {
     if (!date) return;
     
+    console.log('Calendar cell clicked:', date);
+    
     const rect = event.currentTarget.getBoundingClientRect();
     const clickY = event.clientY - rect.top;
     const cellHeight = rect.height;
     const hourFraction = (clickY / cellHeight) * 24;
     const hour = Math.floor(hourFraction);
     const minute = Math.floor((hourFraction - hour) * 60);
-    const clickTime = `${hour.toString().padStart(2, '0')}:${Math.floor(minute / 15) * 15}`.padStart(5, '0');
+    const clickTime = `${hour.toString().padStart(2, '0')}:${Math.floor(minute / 15) * 15}`.toString().padStart(5, '0');
     
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const meetingDate = `${year}-${month}-${day}`;
+    
+    console.log('Opening meeting creation form for:', meetingDate, 'at', clickTime);
     
     setNewMeeting({
       date: meetingDate,
@@ -167,6 +346,8 @@ export default function ProjectManagerCalendar() {
     });
     setSelectedParticipants([]);
     setIsCreatingMeeting(true);
+    
+    console.log('Meeting creation modal should be open now');
   };
 
   const handleDragStart = (e, meeting) => {
@@ -292,73 +473,89 @@ export default function ProjectManagerCalendar() {
     return meetings;
   };
 
+  const createTestMeeting = () => {
+    const projectId = localStorage.getItem('selectedProjectId');
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    
+    const testMeeting = {
+      _id: 'test_' + Date.now(),
+      projectId: projectId,
+      title: 'Test Meeting - Project Calendar',
+      date: tomorrow.toISOString().split('T')[0],
+      time: '14:00',
+      duration: 60,
+      purpose: 'Testing calendar functionality for current project',
+      location: 'Online (Jitsi Meet)',
+      participants: [currentUser?._id || 'demo_user'],
+      hostId: currentUser?._id || 'demo_user',
+      creatorRole: currentUser?.role || 'project_manager'
+    };
+    
+    console.log('Creating test meeting:', testMeeting);
+    setMeetings([...meetings, testMeeting]);
+  };
+
   const createMeeting = async () => {
     if (!newMeeting) return;
 
-    const conflicts = checkOverlap(newMeeting);
+    const projectId = localStorage.getItem('selectedProjectId');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     
-    if (conflicts.length > 0) {
-      const nextSlot = findNextAvailableSlot(newMeeting.date, newMeeting.duration);
-      setOverlapWarning({
-        conflicts,
-        newMeeting,
-        nextSlot,
-        message: `This meeting overlaps with ${conflicts.length} existing meeting(s)`
-      });
+    if (!projectId) {
+      alert('No project selected');
       return;
     }
-
-    const projectId = localStorage.getItem('selectedProjectId');
-    const baseMeetingData = {
-      projectId: projectId || '1',
+    
+    const meetingData = {
       title: newMeeting.title,
       date: newMeeting.date,
       time: newMeeting.time,
-      duration: newMeeting.duration,
+      duration: newMeeting.duration || 60,
       purpose: newMeeting.description || 'Calendar meeting',
       location: 'Online (Jitsi Meet)',
-      participants: selectedParticipants.length > 0 ? selectedParticipants : ['demo_user'],
-      hostId: currentUser?._id || 'demo_user',
-      creatorRole: currentUser?.role || 'project_manager',
-      reminder: newMeeting.reminder,
-      repeat: newMeeting.repeat
+      participants: selectedParticipants.length > 0 ? selectedParticipants : [user._id],
+      projectId: projectId, // Use full project ID, not truncated
+      hostId: user._id,
+      creatorRole: user.role
     };
-
-    console.log('Creating meeting with data:', baseMeetingData);
-
+    
+    console.log('Creating meeting in database first:', meetingData);
+    
     try {
       const response = await fetch('/api/meetings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(baseMeetingData)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(meetingData)
       });
       
-      console.log('Meeting API response status:', response.status);
-      const responseData = await response.json();
-      console.log('Meeting API response data:', responseData);
-      
       if (response.ok) {
-        console.log('Meeting created successfully, refreshing meetings...');
-        fetchMeetings();
+        const savedMeeting = await response.json();
+        console.log('Meeting saved to database:', savedMeeting);
+        await fetchMeetings();
+        console.log('Meeting creation completed');
       } else {
-        console.error('Meeting creation failed:', responseData);
-        const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
-        setMeetings([...meetings, ...allMeetings]);
+        const errorText = await response.text();
+        console.error('Failed to save meeting:', response.status, errorText);
+        alert('Failed to create meeting: ' + (response.status === 403 ? 'Permission denied' : 'Server error'));
       }
     } catch (error) {
-      console.error('Meeting creation error:', error);
-      const allMeetings = generateRecurringMeetings({ ...baseMeetingData, _id: 'demo' + Date.now() });
-      setMeetings([...meetings, ...allMeetings]);
+      console.error('Error creating meeting:', error);
+      alert('Error creating meeting: ' + error.message);
     }
     
     setIsCreatingMeeting(false);
+    setIsEditingMeeting(false);
     setNewMeeting(null);
   };
 
   const forceCreateMeeting = async () => {
     const projectId = localStorage.getItem('selectedProjectId');
     const baseMeetingData = {
-      projectId: projectId || '1',
+      projectId: projectId,
       title: overlapWarning.newMeeting.title,
       date: overlapWarning.newMeeting.date,
       time: overlapWarning.newMeeting.time,
@@ -378,7 +575,7 @@ export default function ProjectManagerCalendar() {
       });
       
       if (response.ok) {
-        fetchMeetings();
+        await fetchMeetings();
       } else {
         const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
         setMeetings([...meetings, newMeetingLocal]);
@@ -398,7 +595,7 @@ export default function ProjectManagerCalendar() {
     
     const projectId = localStorage.getItem('selectedProjectId');
     const baseMeetingData = {
-      projectId: projectId || '1',
+      projectId: projectId,
       title: overlapWarning.newMeeting.title,
       date: overlapWarning.newMeeting.date,
       time: overlapWarning.nextSlot,
@@ -418,7 +615,7 @@ export default function ProjectManagerCalendar() {
       });
       
       if (response.ok) {
-        fetchMeetings();
+        await fetchMeetings();
       } else {
         const newMeetingLocal = { ...baseMeetingData, _id: 'demo' + Date.now() };
         setMeetings([...meetings, newMeetingLocal]);
@@ -684,6 +881,46 @@ export default function ProjectManagerCalendar() {
                         />
                       </div>
                     ))}
+                    {(() => {
+                      const deadlines = getDeadlinesForDate(date);
+                      
+                      return deadlines.map(deadline => (
+                        <div
+                          key={deadline.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDeadline(deadline);
+                            setSelectedDeadlineDetails(deadline);
+                          }}
+                          onMouseEnter={(e) => {
+                            setHoveredDeadline(deadline);
+                            setTooltipPosition({ x: e.clientX, y: e.clientY });
+                          }}
+                          onMouseLeave={() => setHoveredDeadline(null)}
+                          style={{
+                            background: getPriorityColor(deadline.priority),
+                            color: 'white',
+                            padding: '2px 5px',
+                            marginBottom: '2px',
+                            borderRadius: '3px',
+                            fontSize: '10px',
+                            border: '1px solid rgba(255,255,255,0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '2px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <span style={{ fontSize: '8px' }}>{deadline.type === 'project' ? '📅' : '📝'}</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {deadline.type === 'project' 
+                              ? 'Deadline'
+                              : deadline.title.replace('📝 ', '')}
+                          </span>
+                          <span style={{ fontSize: '8px', opacity: 0.8 }}>{deadline.priority}</span>
+                        </div>
+                      ));
+                    })()}
                   </>
                 )}
               </div>
@@ -691,38 +928,68 @@ export default function ProjectManagerCalendar() {
           </div>
           
           <div style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '5px' }}>
-            <h4 style={{ margin: '0 0 15px 0' }}>📋 Calendar Core Features:</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
-                <h5 style={{ margin: '0 0 8px 0', color: '#28a745' }}>✨ Interactive Features:</h5>
-                <div style={{ fontSize: '14px' }}>
-                  ✅ <strong>Create meeting directly from calendar</strong><br/>
-                  ✅ <strong>Click & drag on calendar to set time</strong><br/>
-                  ✅ <strong>Adjust duration by dragging endpoints</strong><br/>
-                  ✅ <strong>Move meeting to another time (drag-drop)</strong><br/>
-                  ✅ <strong>Resize meeting block duration</strong><br/>
-                  ✅ <strong>Color-coded meetings</strong><br/>
-                  ✅ <strong>Show time in local timezone</strong><br/>
-                  ⚠️ <strong>Overlap/Clash Detection</strong><br/>
-                  💡 <strong>Suggest next available slot</strong><br/>
-                  📝 <strong>Meeting Scheduling (Inside Calendar)</strong><br/>
-                  👥 <strong>Add participants & reminders</strong><br/>
-                  🔄 <strong>Repeat options (daily/weekly/monthly)</strong><br/>
-                  🗑️ <strong>Delete meetings</strong> with confirmation
+            <h4 style={{ margin: '0 0 15px 0' }}>📅 Upcoming Meetings:</h4>
+            <div style={{ marginBottom: '20px' }}>
+              {meetings
+                .filter(meeting => {
+                  const meetingDate = new Date(meeting.date + 'T' + meeting.time);
+                  const now = new Date();
+                  return meetingDate >= now;
+                })
+                .sort((a, b) => {
+                  const dateA = new Date(a.date + 'T' + a.time);
+                  const dateB = new Date(b.date + 'T' + b.time);
+                  return dateA - dateB;
+                })
+                .slice(0, 5)
+                .map(meeting => (
+                  <div key={meeting._id} style={{
+                    padding: '12px',
+                    background: 'white',
+                    borderRadius: '6px',
+                    border: '1px solid #ddd',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{meeting.title}</div>
+                      <div style={{ fontSize: '14px', color: '#666' }}>
+                        📅 {meeting.date} • 🕐 {formatTime(meeting.time)} • ⏱️ {meeting.duration}min
+                      </div>
+                      {meeting.purpose && (
+                        <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>
+                          📝 {meeting.purpose}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setSelectedMeeting(meeting)}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#007bff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      View Details
+                    </button>
+                  </div>
+                ))
+              }
+              {meetings.filter(meeting => {
+                const meetingDate = new Date(meeting.date + 'T' + meeting.time);
+                const now = new Date();
+                return meetingDate >= now;
+              }).length === 0 && (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666', background: 'white', borderRadius: '6px', border: '1px solid #ddd' }}>
+                  No upcoming meetings scheduled
                 </div>
-              </div>
-              <div style={{ padding: '10px', background: 'white', borderRadius: '5px', border: '1px solid #ddd' }}>
-                <h5 style={{ margin: '0 0 8px 0', color: '#007bff' }}>🎯 Project Manager Powers:</h5>
-                <div style={{ fontSize: '14px' }}>
-                  👑 <strong>Meeting Moderator</strong> - Join first<br/>
-                  📝 <strong>Create/Edit/Delete</strong> all meetings<br/>
-                  🎨 <strong>Full Calendar Control</strong><br/>
-                  👥 <strong>Manage Participants</strong><br/>
-                  📅 <strong>Schedule Recurring</strong> meetings<br/>
-                  ⚠️ <strong>Conflict Detection</strong><br/>
-                  🔄 <strong>Real-time Updates</strong>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -785,6 +1052,22 @@ export default function ProjectManagerCalendar() {
               </button>
               <button
                 onClick={() => {
+                  // Set up editing mode with current meeting data
+                  setNewMeeting({
+                    ...selectedMeeting,
+                    description: selectedMeeting.purpose || ''
+                  });
+                  setSelectedParticipants(selectedMeeting.participants || []);
+                  setIsEditingMeeting(true);
+                  setIsCreatingMeeting(true);
+                  setSelectedMeeting(null);
+                }}
+                style={{ padding: '8px 16px', background: '#ffc107', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                ✏️ Edit Meeting
+              </button>
+              <button
+                onClick={() => {
                   const projectName = selectedMeeting.title.replace(/\s+/g, '-').toLowerCase();
                   const dateStr = selectedMeeting.date.split('-').reverse().join('-');
                   const roomName = `${projectName}-${dateStr}`;
@@ -827,7 +1110,7 @@ export default function ProjectManagerCalendar() {
             maxHeight: '80vh',
             overflowY: 'auto'
           }}>
-            <h3>📅 Schedule Meeting</h3>
+            <h3>📅 {isEditingMeeting ? 'Edit Meeting' : 'Schedule Meeting'}</h3>
             
             <div style={{ marginBottom: '15px' }}>
               <label><strong>Meeting Title:</strong></label>
@@ -975,6 +1258,7 @@ export default function ProjectManagerCalendar() {
               <button
                 onClick={() => {
                   setIsCreatingMeeting(false);
+                  setIsEditingMeeting(false);
                   setSelectedParticipants([]);
                 }}
                 style={{ padding: '10px 20px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
@@ -983,17 +1267,16 @@ export default function ProjectManagerCalendar() {
               </button>
               <button
                 onClick={createMeeting}
-                disabled={selectedParticipants.length === 0}
                 style={{ 
                   padding: '10px 20px', 
-                  background: selectedParticipants.length === 0 ? '#ccc' : '#28a745', 
+                  background: '#28a745', 
                   color: 'white', 
                   border: 'none', 
                   borderRadius: '4px', 
-                  cursor: selectedParticipants.length === 0 ? 'not-allowed' : 'pointer' 
+                  cursor: 'pointer' 
                 }}
               >
-                📅 Create Meeting ({selectedParticipants.length} participants)
+                📅 {isEditingMeeting ? 'Update Meeting' : 'Create Meeting'}
               </button>
             </div>
           </div>
@@ -1127,7 +1410,117 @@ export default function ProjectManagerCalendar() {
         </div>
       )}
 
+      {selectedDeadlineDetails && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            padding: '20px',
+            borderRadius: '8px',
+            width: '400px',
+            maxWidth: '90vw'
+          }}>
+            <h3>{selectedDeadlineDetails.type === 'project' ? '📅 Project Deadline' : '📝 Task Deadline'}</h3>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Title:</strong> {selectedDeadlineDetails.type === 'project' ? selectedDeadlineDetails.projectName : selectedDeadlineDetails.title.replace('📝 ', '')}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Due Date:</strong> {selectedDeadlineDetails.date}
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Priority:</strong> <span style={{ 
+                padding: '2px 8px', 
+                borderRadius: '12px', 
+                background: getPriorityColor(selectedDeadlineDetails.priority), 
+                color: 'white', 
+                fontSize: '12px' 
+              }}>{selectedDeadlineDetails.priority}</span>
+            </div>
+            {selectedDeadlineDetails.assignee && (
+              <div style={{ marginBottom: '15px' }}>
+                <strong>Assignee:</strong> {selectedDeadlineDetails.assignee}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setSelectedDeadline(null);
+                  setSelectedDeadlineDetails(null);
+                }}
+                style={{ padding: '8px 16px', background: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {hoveredMeeting && (
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltipPosition.x + 15,
+            top: tooltipPosition.y - 10,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            padding: '15px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            zIndex: 1001,
+            maxWidth: '320px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
+            border: '2px solid rgba(255,255,255,0.2)'
+          }}
+        >
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '8px' }}>
+            📅 {hoveredMeeting.title}
+          </div>
+          <div style={{ marginBottom: '6px' }}>🕰️ <strong>Time:</strong> {formatTime(hoveredMeeting.time)} ({hoveredMeeting.duration || 60} min)</div>
+          <div style={{ marginBottom: '6px' }}>📅 <strong>Date:</strong> {hoveredMeeting.date}</div>
+          <div style={{ marginBottom: '6px' }}>📍 <strong>Location:</strong> {hoveredMeeting.location || 'Online (Jitsi Meet)'}</div>
+          {hoveredMeeting.purpose && (
+            <div style={{ marginBottom: '6px' }}>📝 <strong>Purpose:</strong> {hoveredMeeting.purpose}</div>
+          )}
+          {hoveredMeeting.participants && hoveredMeeting.participants.length > 0 && (
+            <div style={{ marginBottom: '6px' }}>
+              👥 <strong>Participants:</strong> {Array.isArray(hoveredMeeting.participants) 
+                ? hoveredMeeting.participants.map(p => {
+                    if (typeof p === 'string' && p.length === 24) {
+                      const user = team.find(u => u.id === p);
+                      return user ? user.username || user.name : p;
+                    }
+                    return p;
+                  }).slice(0, 3).join(', ') + (hoveredMeeting.participants.length > 3 ? ` +${hoveredMeeting.participants.length - 3} more` : '')
+                : hoveredMeeting.participants}
+            </div>
+          )}
+          {hoveredMeeting.reminder && hoveredMeeting.reminder > 0 && (
+            <div style={{ marginBottom: '6px' }}>🔔 <strong>Reminder:</strong> {hoveredMeeting.reminder} min before</div>
+          )}
+          {hasOverlap(hoveredMeeting) && (
+            <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginTop: '10px', padding: '8px', background: 'rgba(255,107,107,0.3)', borderRadius: '6px', border: '1px solid #ff6b6b' }}>
+              ⚠️ CONFLICT: Overlaps with another meeting!
+            </div>
+          )}
+          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.3)', fontSize: '11px', opacity: 0.8 }}>
+            💡 Click to view details or join meeting
+          </div>
+        </div>
+      )}
+
+      {hoveredDeadline && (
         <div
           style={{
             position: 'fixed',
@@ -1137,21 +1530,63 @@ export default function ProjectManagerCalendar() {
             color: 'white',
             padding: '12px',
             borderRadius: '8px',
-            fontSize: '13px',
+            fontSize: '12px',
             zIndex: 1001,
-            maxWidth: '280px',
+            maxWidth: '300px',
             boxShadow: '0 8px 25px rgba(0,0,0,0.4)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            border: '2px solid rgba(255,255,255,0.2)'
           }}
         >
-          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-            📅 {hoveredMeeting.title}
+          <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px', borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '6px' }}>
+            {hoveredDeadline.type === 'project' ? '📅 Project Deadline' : '📝 Task Deadline'}
           </div>
-          <div>🕰️ {formatTime(hoveredMeeting.time)} ({hoveredMeeting.duration || 60} min)</div>
-          <div>📅 {hoveredMeeting.date}</div>
-          {hasOverlap(hoveredMeeting) && (
-            <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginTop: '8px', padding: '4px', background: 'rgba(255,107,107,0.2)', borderRadius: '4px' }}>
-              ⚠️ CONFLICT: Overlaps with another meeting!
+          
+          <div style={{ marginBottom: '4px' }}>🏢 <strong>Project:</strong> {hoveredDeadline.projectName || 'Current Project'}</div>
+          
+          {currentUser?.role && (
+            <div style={{ marginBottom: '4px', fontSize: '10px', opacity: 0.9 }}>
+              👤 <strong>Your Role:</strong> {currentUser.role.replace('_', ' ').toUpperCase()}
+            </div>
+          )}
+          
+          <div style={{ marginBottom: '4px' }}>📅 <strong>Due Date:</strong> {hoveredDeadline.date}</div>
+          <div style={{ marginBottom: '4px' }}>
+            ⚠️ <strong>Priority:</strong> 
+            <span style={{ 
+              marginLeft: '4px',
+              padding: '1px 6px', 
+              borderRadius: '8px', 
+              background: getPriorityColor(hoveredDeadline.priority), 
+              fontSize: '10px' 
+            }}>
+              {hoveredDeadline.priority || 'Medium'}
+            </span>
+          </div>
+          
+          {hoveredDeadline.assignee && (
+            <div style={{ marginBottom: '4px' }}>
+              👤 <strong>Assignee:</strong> {hoveredDeadline.assignee}
+              {hoveredDeadline.assignee === currentUser?.username && (
+                <span style={{ marginLeft: '4px', fontSize: '10px', opacity: 0.8 }}>(You)</span>
+              )}
+            </div>
+          )}
+          
+          {hoveredDeadline.type === 'task' && (
+            <div style={{ marginBottom: '4px', fontSize: '10px', opacity: 0.8 }}>
+              📝 Task from current project
+            </div>
+          )}
+          
+          <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.3)', fontSize: '10px', opacity: 0.8 }}>
+            💡 Click to view details
+            {currentUser?.role === 'project_manager' && ' or manage task'}
+          </div>
+          
+          {currentUser?.role !== 'project_manager' && hoveredDeadline.assignee && hoveredDeadline.assignee !== currentUser?.username && (
+            <div style={{ marginTop: '4px', fontSize: '9px', opacity: 0.7, fontStyle: 'italic' }}>
+              🔒 Limited access - not assigned to you
             </div>
           )}
         </div>
