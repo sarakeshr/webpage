@@ -16,19 +16,29 @@ export default function EditProject() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const router = useRouter();
   const { id } = router.query;
 
   useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    setCurrentUser(user);
+    
+    // Check if user is authorized to edit projects
+    if (user.role !== 'project_manager' && user.role !== 'admin') {
+      router.push('/');
+      return;
+    }
+    
     if (id) {
       fetchProject();
       fetchUsers();
     }
-  }, [id]);
+  }, [id, router]);
 
   const fetchProject = async () => {
     try {
-      const response = await fetch('/api/admin/projects');
+      const response = await fetch('/api/projects');
       const projects = await response.json();
       const project = projects.find(p => p._id === id);
       
@@ -65,7 +75,7 @@ export default function EditProject() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/admin/projects', {
+      const response = await fetch('/api/projects', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,8 +116,13 @@ export default function EditProject() {
     router.push('/');
   };
 
-  if (initialLoading) {
+  if (initialLoading || !currentUser) {
     return <div style={{ padding: '50px', textAlign: 'center' }}>Loading project...</div>;
+  }
+
+  // Additional security check
+  if (currentUser.role !== 'project_manager' && currentUser.role !== 'admin') {
+    return <div style={{ padding: '50px', textAlign: 'center' }}>Access denied. Redirecting...</div>;
   }
 
   const projectManagers = users.filter(user => user.role === 'Project manager' || user.role === 'project_manager');

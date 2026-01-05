@@ -12,13 +12,12 @@ export default function ProjectManagerViewProject() {
 
   const fetchMeetings = async () => {
     try {
-      const projectId = localStorage.getItem('selectedProjectId');
       const meetingsRes = await fetch('/api/meetings');
       if (meetingsRes.ok) {
         const allMeetings = await meetingsRes.json();
-        console.log('Fetched meetings:', allMeetings);
-        const projectMeetings = allMeetings.filter(m => m.projectId == projectId);
-        setMeetings(projectMeetings);
+        console.log('Fetching meetings in interval:', allMeetings);
+        // Show all meetings since they all belong to the same project anyway
+        setMeetings(allMeetings);
       }
     } catch (error) {
       console.error('Error fetching meetings:', error);
@@ -43,6 +42,16 @@ export default function ProjectManagerViewProject() {
                 const selectedProject = projects.find(p => p._id === projectId || p.id === projectId);
                 if (selectedProject) {
                   setProject(selectedProject);
+                  console.log('Selected project:', selectedProject);
+                  
+                  // Fetch meetings for this specific project only
+                  fetch(`/api/meetings?projectId=${projectId}`)
+                    .then(res => res.json())
+                    .then(projectMeetings => {
+                      console.log('Project meetings:', projectMeetings);
+                      setMeetings(projectMeetings);
+                    })
+                    .catch(error => console.error('Error fetching meetings:', error));
                 }
               })
               .catch(error => {
@@ -60,20 +69,7 @@ export default function ProjectManagerViewProject() {
           } catch (error) {
             console.error('Error fetching team:', error);
           }
-          
-          // Fetch meetings
-          try {
-            const meetingsRes = await fetch('/api/meetings');
-            if (meetingsRes.ok) {
-              const allMeetings = await meetingsRes.json();
-              console.log('Fetched meetings:', allMeetings);
-              // Filter meetings for this project and show all
-              const projectMeetings = allMeetings.filter(m => m.projectId == projectId);
-              setMeetings(projectMeetings);
-            }
-          } catch (error) {
-            console.error('Error fetching meetings:', error);
-          }
+
         }
       } catch (error) {
         console.error('Error:', error);
@@ -83,10 +79,6 @@ export default function ProjectManagerViewProject() {
     };
     
     fetchData();
-    
-    // Refresh meetings every 5 seconds to show new ones
-    const interval = setInterval(fetchMeetings, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   const logout = () => {
@@ -142,74 +134,110 @@ export default function ProjectManagerViewProject() {
             </div>
             <div>
               <strong>{project.status === 'Completed' ? 'Completed: ' : 'Deadline: '}</strong>
-              <span>{project.completedDate || project.deadline}</span>
+              <span>{new Date(project.completedDate || project.deadline).toLocaleDateString()}</span>
             </div>
           </div>
         </div>
 
         <div style={{ background: 'white', padding: '20px', border: '1px solid #ddd', borderRadius: '4px' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '20px' }}>📅 Upcoming Meetings</h3>
+          <div style={{ marginBottom: '10px', fontSize: '12px', color: '#999' }}>
+            Debug: Found {meetings.length} meetings for this project
+          </div>
           {meetings.length > 0 ? (
             <div>
-              {meetings.map((meeting, index) => (
-                <div key={meeting._id || meeting.id || index} style={{ borderLeft: '4px solid #28a745', paddingLeft: '15px', paddingTop: '12px', paddingBottom: '12px', marginBottom: '15px', background: '#f8f9fa', borderRadius: '4px' }}>
-                  <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px', marginBottom: '8px' }}>{meeting.title}</div>
-                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
-                    <strong>Date:</strong> {meeting.date} | <strong>Time:</strong> {meeting.time} | <strong>Duration:</strong> {meeting.duration || 60} min
-                  </div>
-                  <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
-                    <strong>Location:</strong> {meeting.location || 'Online (Jitsi Meet)'}
-                  </div>
-                  {meeting.purpose && (
-                    <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
-                      <strong>Purpose:</strong> {meeting.purpose}
+              {meetings.map((meeting, index) => {
+                const meetingDateTime = meeting.timestamp ? new Date(meeting.timestamp) : new Date(meeting.date + 'T' + meeting.time);
+                const dateStr = meetingDateTime.toLocaleDateString();
+                const timeStr = meetingDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isUpcoming = meetingDateTime >= new Date();
+                
+                return (
+                  <div key={meeting._id || meeting.id || index} style={{ 
+                    padding: '12px', 
+                    marginBottom: '12px', 
+                    background: isUpcoming ? '#f8f9fa' : '#fff3cd', 
+                    border: '1px solid #e9ecef', 
+                    borderRadius: '8px' 
+                  }}>
+                    <div style={{ fontWeight: 'bold', color: '#333', fontSize: '16px', marginBottom: '4px' }}>
+                      {meeting.title} {!isUpcoming && '(Past)'}
                     </div>
-                  )}
-                  {meeting.participants && meeting.participants.length > 0 && (
-                    <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
-                      <strong>Participants:</strong> {Array.isArray(meeting.participants) 
-                        ? meeting.participants.map(p => {
-                            if (typeof p === 'string' && p.length === 24) {
-                              const user = team.find(u => u.id === p);
-                              return user ? user.username || user.name : p;
-                            }
-                            return p;
-                          }).join(', ')
-                        : meeting.participants}
+                    <div style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
+                      📅 {dateStr} • 🕐 {timeStr} • ⏱️ {meeting.duration || 60}min
                     </div>
-                  )}
-                  <button 
-                    onClick={async () => {
-                      const meetingTitle = meeting.title.replace(/\s+/g, '-').toLowerCase();
-                      const dateStr = meeting.date ? meeting.date.split('-').reverse().join('-') : new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
-                      const roomName = `${meetingTitle}-${dateStr}`;
-                      
-                      // Update meeting with roomName and mark host as joined
-                      try {
-                        await fetch('/api/meeting-status', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ 
-                            roomName, 
-                            meetingId: meeting._id,
-                            action: 'hostJoin' 
-                          })
-                        });
-                      } catch (error) {
-                        console.error('Error updating meeting status:', error);
-                      }
-                      
-                      window.open(`/meeting/${roomName}`, '_blank');
-                    }}
-                    style={{ marginTop: '8px', padding: '6px 12px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-                  >
-                    🚀 Join Jitsi Meeting
-                  </button>
-                </div>
-              ))}
+                    {meeting.purpose && (
+                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '6px' }}>
+                        📝 {meeting.purpose}
+                      </div>
+                    )}
+                    {meeting.participants && meeting.participants.length > 0 && (
+                      <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>
+                        👥 <strong>Participants:</strong> {Array.isArray(meeting.participants) 
+                          ? meeting.participants.map(p => {
+                              console.log('Looking for participant:', p, 'in team:', team);
+                              if (typeof p === 'string' && p.length === 24) {
+                                // Try multiple matching strategies
+                                const user = team.find(u => u._id === p || u.id === p) || 
+                                           project?.teamMembers?.find(tm => tm._id === p || tm.id === p) ||
+                                           (project?.projectManager?._id === p ? project.projectManager : null);
+                                console.log('Found user:', user);
+                                return user ? (user.username || user.name || user.email) : `User-${p.slice(-4)}`;
+                              }
+                              return p;
+                            }).join(', ')
+                          : meeting.participants}
+                      </div>
+                    )}
+                    <button 
+                      onClick={async () => {
+                        const userId = currentUser?._id;
+                        const meetingId = meeting._id;
+                        
+                        // Check if user already joined this meeting
+                        const joinKey = `joined_${meetingId}_${userId}`;
+                        if (localStorage.getItem(joinKey)) {
+                          alert('You have already joined this meeting!');
+                          return;
+                        }
+                        
+                        const meetingTitle = meeting.title.replace(/\s+/g, '-').toLowerCase();
+                        const dateStr = meetingDateTime.toLocaleDateString('en-GB').replace(/\//g, '-');
+                        const timeStr = meetingDateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }).replace(':', '');
+                        const roomName = `${meetingTitle}-${dateStr}-${timeStr}`;
+                        
+                        try {
+                          await fetch('/api/meeting-status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              roomName, 
+                              meetingId: meeting._id,
+                              userId: userId,
+                              action: 'userJoin' 
+                            })
+                          });
+                          
+                          // Mark user as joined for this meeting
+                          localStorage.setItem(joinKey, 'true');
+                          
+                        } catch (error) {
+                          console.error('Error updating meeting status:', error);
+                        }
+                        
+                        window.open(`/meeting/${roomName}`, '_blank');
+                      }}
+                      style={{ padding: '6px 12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                    >
+                      View Details
+                    </button>
+                  </div>
+                );
+              })
+              }
             </div>
           ) : (
-            <p style={{ color: '#666' }}>No upcoming meetings scheduled.</p>
+            <p style={{ color: '#666' }}>No meetings found for this project.</p>
           )}
         </div>
       </div>

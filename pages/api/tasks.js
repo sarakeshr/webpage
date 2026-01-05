@@ -44,14 +44,16 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'POST') {
     try {
-      const { projectId, columnId, title, description, assignee, priority, dueDate, tags, subtasks, createdBy } = req.body;
+      const { projectId, columnId, title, description, assignee, priority, dueDate, tags, subtasks, createdBy, attachments } = req.body;
       
       // Get the highest order number in the column
       const lastTask = await Task.findOne({ columnId }).sort({ order: -1 });
       const order = lastTask ? lastTask.order + 1 : 0;
       
       console.log('=== TASK CREATION DEBUG ===');
+      console.log('Full request body:', JSON.stringify(req.body, null, 2));
       console.log('Received subtasks:', JSON.stringify(subtasks, null, 2));
+      console.log('Received attachments:', JSON.stringify(attachments, null, 2));
       console.log('Subtasks type:', typeof subtasks);
       console.log('Subtasks is array:', Array.isArray(subtasks));
       
@@ -65,6 +67,7 @@ export default async function handler(req, res) {
         dueDate: dueDate || null,
         tags: tags || [],
         subtasks: subtasks || [],
+        attachments: attachments || [],
         order,
         createdBy
       };
@@ -89,40 +92,101 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'PUT') {
     try {
-      const { id, taskId, title, description, assignee, priority, dueDate, tags, subtasks, columnId } = req.body;
+      const { id, taskId, title, description, assignee, priority, dueDate, tags, subtasks, columnId, attachments } = req.body;
       const targetId = taskId || id;
       
-      const updateData = {
-        title,
-        description,
-        assignee: assignee || null,
-        priority,
-        dueDate: dueDate || null,
-        tags: tags || [],
-        subtasks: subtasks || [],
-        updatedAt: new Date()
-      };
+      console.log('PUT request body:', JSON.stringify(req.body, null, 2));
+      console.log('Request keys:', Object.keys(req.body));
+      console.log('Target ID:', targetId);
       
-      // If moving to different column, update order
-      if (columnId) {
+      if (!targetId) {
+        return res.status(400).json({ error: 'Task ID is required' });
+      }
+      
+      // If this is a drag-and-drop move (only taskId and columnId provided)
+      if (columnId && !title && !description && !priority && !dueDate && !tags && !subtasks && !attachments) {
+        console.log('Detected drag-and-drop move, preserving all data');
         const lastTask = await Task.findOne({ columnId }).sort({ order: -1 });
-        updateData.columnId = columnId;
-        updateData.order = lastTask ? lastTask.order + 1 : 0;
+        const updateData = {
+          columnId,
+          order: lastTask ? lastTask.order + 1 : 0,
+          updatedAt: new Date()
+        };
+        
+        const updatedTask = await Task.findByIdAndUpdate(targetId, updateData, { new: true })
+          .populate('assignee', 'username email');
+        
+        if (!updatedTask) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+        
+        console.log('Drag-and-drop update successful, preserved data:', {
+          tags: updatedTask.tags,
+          subtasks: updatedTask.subtasks,
+          attachments: updatedTask.attachments
+        });
+        
+        res.status(200).json(updatedTask);
+      } else {
+        console.log('Full task update detected');
+        console.log('Received data:', { title, description, assignee, priority, dueDate, tags, subtasks, attachments });
+        console.log('Subtasks received:', JSON.stringify(subtasks, null, 2));
+        console.log('Subtasks type:', typeof subtasks);
+        console.log('Subtasks is array:', Array.isArray(subtasks));
+        
+        // Validate required fields
+        if (!title || title.trim() === '') {
+          return res.status(400).json({ error: 'Task title is required' });
+        }
+        
+        // Full task update - only update fields that are provided
+        const updateData = {
+          updatedAt: new Date()
+        };
+        
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (assignee !== undefined) updateData.assignee = assignee || null;
+        if (priority !== undefined) updateData.priority = priority;
+        if (dueDate !== undefined) updateData.dueDate = dueDate || null;
+        if (tags !== undefined) updateData.tags = tags;
+        if (subtasks !== undefined) {
+          console.log('Setting subtasks in updateData:', JSON.stringify(subtasks, null, 2));
+          updateData.subtasks = subtasks;
+        } else {
+          console.log('Subtasks is undefined, not updating subtasks field');
+        }
+        if (attachments !== undefined) updateData.attachments = attachments;
+        
+        console.log('Update data being sent to DB:', JSON.stringify(updateData, null, 2));
+        console.log('Subtasks in updateData:', JSON.stringify(updateData.subtasks, null, 2));
+        
+        // If moving to different column, update order
+        if (columnId) {
+          const lastTask = await Task.findOne({ columnId }).sort({ order: -1 });
+          updateData.columnId = columnId;
+          updateData.order = lastTask ? lastTask.order + 1 : 0;
+        }
+        
+        const updatedTask = await Task.findByIdAndUpdate(targetId, updateData, { new: true })
+          .populate('assignee', 'username email');
+        
+        console.log('Updated task subtasks:', updatedTask?.subtasks);
+        
+        if (!updatedTask) {
+          console.log('Task not found with ID:', targetId);
+          return res.status(404).json({ error: 'Task not found' });
+        }
+        
+        console.log('Task update successful');
+        res.status(200).json(updatedTask);
       }
-      
-      const updatedTask = await Task.findByIdAndUpdate(targetId, updateData, { new: true })
-        .populate('assignee', 'username email');
-      
-      console.log('Updated task subtasks:', updatedTask.subtasks);
-      
-      if (!updatedTask) {
-        return res.status(404).json({ error: 'Task not found' });
-      }
-      
-      res.status(200).json(updatedTask);
     } catch (error) {
-      console.error('Error updating task:', error);
-      res.status(500).json({ error: 'Failed to update task' });
+      console.error('Detailed error updating task:', error);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      res.status(500).json({ error: 'Failed to update task', details: error.message });
     }
   } else if (req.method === 'DELETE') {
     try {
